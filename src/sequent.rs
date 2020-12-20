@@ -42,15 +42,13 @@ impl Sequent {
     }
     pub fn next_not_proven(&mut self) -> Option<&mut Self> {
         if self.proof.is_some() {
-            match self.proof.as_mut().unwrap().as_mut() {
-                Proof::Hypothesis => None,
-                Proof::ImplicationIntro(o) => o.next_not_proven(),
-                Proof::DisjonctionElim(a_or_b, with_a, with_b) => a_or_b
-                    .next_not_proven()
-                    .or_else(move || with_a.next_not_proven())
-                    .or_else(move || with_b.next_not_proven()),
-                Proof::Exfalso(o) => o.next_not_proven(),
+            let array = self.proof.as_mut().unwrap().array_mut();
+            for o in array {
+                if let Some(next_not_proven) = o.next_not_proven() {
+                    return Some(next_not_proven)
+                }
             }
+            None
         } else {
             Some(self)
         }
@@ -167,7 +165,7 @@ mod render {
     impl SequentGeom {
         fn from(sequent: &Sequent) -> Self {
             let proof_repr = sequent.proof.as_ref().map(|p| ProofRepr {
-                over: p.iter().map(|s| SequentGeom::from(s)).collect(),
+                over: p.array().iter().map(|s| SequentGeom::from(s)).collect(),
                 name: p.label().to_owned(),
             });
 
