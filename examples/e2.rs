@@ -27,11 +27,11 @@ fn main() {
 
     loop {
         println!("\x1b[2J");
-        s.print_proof();
+        s.print_proof(true);
         if let Some(not_proven) = s.next_not_proven() {
             println!();
             println!();
-            println!("prove: {}", not_proven);
+            println!("prove: {:#}", not_proven);
             let c = get_cmd(&mut buffer);
             if !not_proven.prove_by(c) {
                 println!("invalid application");

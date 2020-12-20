@@ -61,32 +61,44 @@ impl Precedence {
 use std::fmt;
 impl fmt::Display for Prop {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fn display_binary_op(
-            f: &mut fmt::Formatter<'_>,
-            lhs: &Prop,
-            rhs: &Prop,
-            repr: &str,
-            preced: Precedence,
-        ) -> fmt::Result {
+        let (po, pc) = if f.alternate() {
+            ("\x1b[2m(\x1b[0m", "\x1b[2m)\x1b[0m")
+        } else {
+            ("(", ")")
+        };
+        let display_binary_op = |f: &mut fmt::Formatter<'_>,
+                                 lhs: &Prop,
+                                 rhs: &Prop,
+                                 repr: &str,
+                                 preced: Precedence|
+         -> fmt::Result {
             if lhs.precedence() >= preced {
-                "(".fmt(f)?;
+                po.fmt(f)?;
                 lhs.fmt(f)?;
-                ")".fmt(f)?;
+                pc.fmt(f)?;
             } else {
                 lhs.fmt(f)?;
             }
             repr.fmt(f)?;
             if rhs.precedence() > preced {
-                "(".fmt(f)?;
+                po.fmt(f)?;
                 rhs.fmt(f)?;
-                ")".fmt(f)
+                pc.fmt(f)
             } else {
                 rhs.fmt(f)
             }
-        }
+        };
         match self {
             Self::False => sym::FALSE.fmt(f),
-            Self::Variable(name) => name.fmt(f),
+            Self::Variable(name) => {
+                if f.alternate() {
+                    "\x1b[96m".fmt(f)?;
+                    name.fmt(f)?;
+                    "\x1b[0m".fmt(f)
+                } else {
+                    name.fmt(f)
+                }
+            }
             Self::Conjonction(lhs, rhs) => {
                 display_binary_op(f, lhs, rhs, sym::CONJONCTION, Precedence::CONJONCTION)
             }
@@ -97,9 +109,9 @@ impl fmt::Display for Prop {
                 if rhs.as_ref() == &Self::False {
                     "~".fmt(f)?;
                     if lhs.precedence() > Precedence::ATOMIC {
-                        "(".fmt(f)?;
+                        po.fmt(f)?;
                         lhs.fmt(f)?;
-                        ")".fmt(f)
+                        pc.fmt(f)
                     } else {
                         lhs.fmt(f)
                     }

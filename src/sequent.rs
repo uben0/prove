@@ -60,10 +60,10 @@ impl Sequent {
             Some(self)
         }
     }
-    pub fn print_proof(&self) {
+    pub fn print_proof(&self, alternate: bool) {
         let lock = std::io::stdout();
         let mut output = lock.lock();
-        render::render_sequent_proof(self, &mut output).unwrap();
+        render::render_sequent_proof(self, &mut output, alternate).unwrap();
     }
 }
 
@@ -103,26 +103,28 @@ impl FromStr for Sequent {
                 };
                 Ok(Self::new(hypotheses, right.parse()?))
             }
-            [_, None, None] => Err("missing sequent symbol"),
+            [Some(prop), None, None] => Ok(Self::new(Vec::new(), prop.parse()?)),
             _ => Err("expecting only one sequent symbol"),
         }
     }
 }
 
 mod render {
-    use super::Sequent;
+    use super::{Sequent, Prop, sym};
     use std::{io, io::Write};
 
-    pub fn render_sequent_proof(sequent: &Sequent, output: &mut impl Write) -> io::Result<()> {
+    pub fn render_sequent_proof(sequent: &Sequent, output: &mut impl Write, alternate: bool) -> io::Result<()> {
         let sg = SequentGeom::from(sequent);
         for y in (0..sg.height).rev() {
-            sg.print_line(output, y)?;
+            sg.print_line(output, y, alternate)?;
             writeln!(output)?;
         }
         Ok(())
     }
 
     struct SequentGeom {
+        hypotheses: Vec<Prop>,
+        conclusion: Prop,
         bottom: String,
         proof: Option<Box<ProofRepr>>,
         width: usize,
@@ -196,6 +198,8 @@ mod render {
                     let width = (center + u_right.max(b_right)).max(rule_end);
                     let bottom_x = center - b_left;
                     Self {
+                        hypotheses: sequent.hypotheses().to_owned(),
+                        conclusion: sequent.conclusion().clone(),
                         width,
                         height: u_height + 2,
                         bottom_x,
@@ -206,6 +210,8 @@ mod render {
                     }
                 } else {
                     Self {
+                        hypotheses: sequent.hypotheses().to_owned(),
+                        conclusion: sequent.conclusion().clone(),
                         width: bottom_width + proof.name.chars().count(),
                         height: 2,
                         bottom_x: 0,
@@ -217,6 +223,8 @@ mod render {
                 }
             } else {
                 Self {
+                    hypotheses: sequent.hypotheses().to_owned(),
+                    conclusion: sequent.conclusion().clone(),
                     width: bottom_width,
                     center: bottom_width / 2,
                     height: 1,
@@ -227,13 +235,28 @@ mod render {
                 }
             }
         }
-        fn print_line(&self, out: &mut impl Write, line: usize) -> io::Result<()> {
+        fn print_line(&self, out: &mut impl Write, line: usize, alternate: bool) -> io::Result<()> {
             match line {
                 0 => {
                     for _ in 0..self.bottom_x {
                         write!(out, " ")?;
                     }
-                    write!(out, "{}", self.bottom)?;
+                    if alternate {
+                        let mut first = true;
+                        for h in &self.hypotheses {
+                            if !first {
+                                write!(out, ", ")?;
+                            }
+                            first = false;
+                            write!(out, "{:#}", h)?;
+                        }
+                        if !first {
+                            write!(out, " ")?;
+                        }
+                        write!(out, "\x1b[1m{}\x1b[0m {:#}", sym::SEQUENT, self.conclusion)?;
+                    } else {
+                        write!(out, "{}", self.bottom)?;
+                    }
                     for _ in (self.bottom_x + self.bottom_width)..self.width {
                         write!(out, " ")?;
                     }
@@ -279,7 +302,7 @@ mod render {
                                 write!(out, "    ")?;
                             }
                             first = false;
-                            o.print_line(out, line)?;
+                            o.print_line(out, line, alternate)?;
                         }
                         for _ in (self.center + u_right)..self.width {
                             write!(out, " ")?;

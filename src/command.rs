@@ -1,16 +1,16 @@
 use super::property::Prop;
 
 pub enum Command {
-    Hypothesis,                  // hyp
-    IntroImplication,            // impl_i
-    ElimDisjonction(Prop, Prop), // disj_e A, B
-    Exfalso,                     // false
-    ModusPonens(Prop),           // mp B
-    IntroConjonction,            // conj_i
-    ElimConjonction(Prop, Prop), // conj_e A, B
-    IntroDisjonctionL,           // disj_i_l
-    IntroDisjonctionR,           // disj_i_r
-    Weakened(Vec<usize>),        // aff 0 1 2 ...
+    Hypothesis,
+    IntroImplication,
+    ElimDisjonction(Prop, Prop),
+    Exfalso,
+    ModusPonens(Prop),
+    IntroConjonction,
+    ElimConjonction(Prop, Prop),
+    IntroDisjonctionL,
+    IntroDisjonctionR,
+    Weakened(Vec<usize>),
 }
 
 fn parse_name(buffer: &str) -> Result<&str, &'static str> {
@@ -55,19 +55,19 @@ impl FromStr for Command {
         let ea1 = Err("takes 1 arguments");
         let ea2 = Err("takes 2 arguments");
         match parse_name(s)? {
-            "hyp" => match &props(s)?[..] {
+            "h" => match &props(s)?[..] {
                 [] => Ok(Self::Hypothesis),
                 _ => ea0,
             },
-            "impl_i" => match &props(s)?[..] {
+            "ii" => match &props(s)?[..] {
                 [] => Ok(Self::IntroImplication),
                 _ => ea0,
             },
-            "disj_e" => match &props(s)?[..] {
+            "de" => match &props(s)?[..] {
                 [a, b] => Ok(Self::ElimDisjonction(a.clone(), b.clone())),
                 _ => ea2,
             },
-            "false" => match &props(s)?[..] {
+            "f" => match &props(s)?[..] {
                 [] => Ok(Self::Exfalso),
                 _ => ea0,
             },
@@ -75,23 +75,23 @@ impl FromStr for Command {
                 [b] => Ok(Self::ModusPonens(b.clone())),
                 _ => ea1,
             },
-            "conj_i" => match &props(s)?[..] {
+            "ci" => match &props(s)?[..] {
                 [] => Ok(Self::IntroConjonction),
                 _ => ea0,
             },
-            "conj_e" => match &props(s)?[..] {
+            "ce" => match &props(s)?[..] {
                 [a, b] => Ok(Self::ElimConjonction(a.clone(), b.clone())),
                 _ => ea2,
             },
-            "disj_i_l" => match &props(s)?[..] {
+            "dil" => match &props(s)?[..] {
                 [] => Ok(Self::IntroDisjonctionL),
                 _ => ea0,
             },
-            "disj_i_r" => match &props(s)?[..] {
+            "dir" => match &props(s)?[..] {
                 [] => Ok(Self::IntroDisjonctionR),
                 _ => ea0,
             },
-            "aff" => Ok(Self::Weakened(indexes(s)?)),
+            "a" => Ok(Self::Weakened(indexes(s)?)),
             _ => Err("unknown command"),
         }
     }
