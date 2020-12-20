@@ -23,7 +23,13 @@ impl Sequent {
             Command::Hypothesis => Proof::hypothesis(self),
             Command::IntroImplication => Proof::impl_intro(self),
             Command::ElimDisjonction(a, b) => Some(Proof::disj_elim(self, &a, &b)),
-            Command::Exfalso => Some(Proof::exfalso(self))
+            Command::Exfalso => Some(Proof::exfalso(self)),
+            Command::ModusPonens(b) => Some(Proof::modus_ponens(self, &b)),
+            Command::ElimConjonction(a, b) => Some(Proof::conj_e(self, &a, &b)),
+            Command::IntroConjonction => Proof::conj_i(self),
+            Command::IntroDisjonctionL => Proof::disj_i_l(self),
+            Command::IntroDisjonctionR => Proof::disj_i_r(self),
+            Command::Weakened(e) => Proof::weakened(self, &e),
         } {
             self.proof = Some(proof.into());
             true
@@ -45,7 +51,7 @@ impl Sequent {
             let array = self.proof.as_mut().unwrap().array_mut();
             for o in array {
                 if let Some(next_not_proven) = o.next_not_proven() {
-                    return Some(next_not_proven)
+                    return Some(next_not_proven);
                 }
             }
             None
@@ -102,7 +108,7 @@ impl FromStr for Sequent {
 }
 
 mod render {
-    use super::{Sequent};
+    use super::Sequent;
     use std::{io, io::Write};
 
     pub fn render_sequent_proof(sequent: &Sequent, output: &mut impl Write) -> io::Result<()> {
@@ -123,7 +129,6 @@ mod render {
         bottom_width: usize,
         center: usize,
     }
-    
     struct ProofRepr {
         over: Vec<SequentGeom>,
         name: String,
@@ -251,8 +256,7 @@ mod render {
                             write!(out, " ")?;
                         }
                         Ok(())
-                    }
-                    else {
+                    } else {
                         for _ in 0..self.width {
                             write!(out, " ")?;
                         }

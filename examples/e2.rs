@@ -15,6 +15,9 @@ fn get_cmd(buffer: &mut String) -> Command {
 
 fn main() {
     // |- P \/ Q -> (P->!) -> Q
+    // |- (A -> B) /\ (B -> A) -> (B -> A) /\ (A -> B)
+    // Q\/(Q->!), P->Q->R, P->(Q->!)->S |- P->(R\/S)
+
 
     let mut buffer = String::new();
     println!("enter a sequent to prove:");
