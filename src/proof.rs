@@ -1,5 +1,6 @@
 use super::property::Prop;
 use super::sequent::Sequent;
+use super::label;
 
 /// Goes with a sequent as validation
 #[derive(Debug, Clone)]
@@ -133,14 +134,14 @@ impl Proof {
     }
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Hypothesis(_) => "hyp",
-            Self::ImplicationIntro(_) => "->i",
-            Self::DisjonctionElim(_) => "\\/e",
-            Self::DisjonctionIntroL(_) => "\\/i,l",
-            Self::DisjonctionIntroR(_) => "\\/i,r",
-            Self::ConjonctionElim(_) => "/\\e",
-            Self::ConjonctionIntro(_) => "/\\i",
-            Self::Exfalso(_) => "!e",
+            Self::Hypothesis(_) => label::HYPOTHESIS,
+            Self::ImplicationIntro(_) => label::IMPLICATION_I,
+            Self::DisjonctionElim(_) => label::DISJONCTION_E,
+            Self::DisjonctionIntroL(_) => label::DISJONCTION_I_L,
+            Self::DisjonctionIntroR(_) => label::DISJONCTION_I_R,
+            Self::ConjonctionElim(_) => label::CONJONCTION_E,
+            Self::ConjonctionIntro(_) => label::CONJONCTION_I,
+            Self::Exfalso(_) => label::FALSE_E,
             Self::ModusPonens(_) => "mp",
             Self::Weakened(_) => "aff",
         }

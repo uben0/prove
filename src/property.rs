@@ -1,3 +1,5 @@
+use super::sym;
+
 /// Represents any property, eg: `A/\B->B`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Prop {
@@ -59,11 +61,6 @@ impl Precedence {
 use std::fmt;
 impl fmt::Display for Prop {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (sym_conjonction, sym_disjonction, sym_implication) = if f.alternate() {
-            ("∧", "∨", "➔")
-        } else {
-            ("/\\", "\\/", "->")
-        };
         fn display_binary_op(
             f: &mut fmt::Formatter<'_>,
             lhs: &Prop,
@@ -88,18 +85,18 @@ impl fmt::Display for Prop {
             }
         }
         match self {
-            Self::False => "!".fmt(f),
+            Self::False => sym::FALSE.fmt(f),
             Self::Variable(name) => name.fmt(f),
             Self::Conjonction(lhs, rhs) => {
-                display_binary_op(f, lhs, rhs, sym_conjonction, Precedence::CONJONCTION)
+                display_binary_op(f, lhs, rhs, sym::CONJONCTION, Precedence::CONJONCTION)
             }
             Self::Disjonction(lhs, rhs) => {
-                display_binary_op(f, lhs, rhs, sym_disjonction, Precedence::DISJONCTION)
+                display_binary_op(f, lhs, rhs, sym::DISJONCTION, Precedence::DISJONCTION)
             }
             Self::Implication(lhs, rhs) => {
                 if rhs.as_ref() == &Self::False {
                     "~".fmt(f)?;
-                    if lhs.precedence() < Precedence::ATOMIC {
+                    if lhs.precedence() > Precedence::ATOMIC {
                         "(".fmt(f)?;
                         lhs.fmt(f)?;
                         ")".fmt(f)
@@ -107,7 +104,7 @@ impl fmt::Display for Prop {
                         lhs.fmt(f)
                     }
                 } else {
-                    display_binary_op(f, lhs, rhs, sym_implication, Precedence::IMPLICATION)
+                    display_binary_op(f, lhs, rhs, sym::IMPLICATION, Precedence::IMPLICATION)
                 }
             }
         }
@@ -138,6 +135,7 @@ mod parser {
         Conjonction,  // /\
         Disjonction,  // \/
         Implication,  // ->
+        Negation,     // ~
     }
     struct Lexer<'a> {
         input: Peekable<std::str::Chars<'a>>,
@@ -163,6 +161,7 @@ mod parser {
                 '(' => Ok(LexItem::ParenOpen),
                 ')' => Ok(LexItem::ParenClose),
                 '!' => Ok(LexItem::False),
+                '~' => Ok(LexItem::Negation),
                 '/' => self.must_follow('\\').map(|()| LexItem::Conjonction),
                 '\\' => self.must_follow('/').map(|()| LexItem::Disjonction),
                 '-' => self.must_follow('>').map(|()| LexItem::Implication),
@@ -193,6 +192,7 @@ mod parser {
         Conjonction,
         Disjonction,
         Implication,
+        Negation,
     }
     struct ParenLexer<'a>(&'a mut dyn Iterator<Item = Result<LexItem, &'static str>>);
     impl<'a> Iterator for ParenLexer<'a> {
@@ -238,6 +238,7 @@ mod parser {
                     LexItem::Conjonction => ParenLexItem::Conjonction,
                     LexItem::Disjonction => ParenLexItem::Disjonction,
                     LexItem::Implication => ParenLexItem::Implication,
+                    LexItem::Negation => ParenLexItem::Negation,
                 }),
                 Err(e) => Err(e),
             })
@@ -259,6 +260,7 @@ mod parser {
                     ParenLexItem::Conjonction => Some(Precedence::CONJONCTION),
                     ParenLexItem::Disjonction => Some(Precedence::DISJONCTION),
                     ParenLexItem::Implication => Some(Precedence::IMPLICATION),
+                    ParenLexItem::Negation => Some(Precedence::ATOMIC),
                 })
                 .enumerate()
             {
@@ -279,18 +281,28 @@ mod parser {
             // [_] => Err("not an atomic expression"),
             items => {
                 if let Some((left, op, right)) = split_at_weak(items) {
-                    let (left, right) = (
-                        Box::new(syntax_parse(left)?),
-                        Box::new(syntax_parse(right)?),
-                    );
-                    Ok(match op {
-                        ParenLexItem::Conjonction => Prop::Conjonction(left, right),
-                        ParenLexItem::Disjonction => Prop::Disjonction(left, right),
-                        ParenLexItem::Implication => Prop::Implication(left, right),
-                        ParenLexItem::False => unreachable!(),
-                        ParenLexItem::Name(_) => unreachable!(),
-                        ParenLexItem::Paren(_) => unreachable!(),
-                    })
+                    if let ParenLexItem::Negation = op {
+                        if let [] = left {
+                            let right = Box::new(syntax_parse(right)?);
+                            Ok(Prop::Implication(right, Prop::False.into()))
+                        } else {
+                            Err("negation is not a binary operator")
+                        }
+                    } else {
+                        let (left, right) = (
+                            Box::new(syntax_parse(left)?),
+                            Box::new(syntax_parse(right)?),
+                        );
+                        Ok(match op {
+                            ParenLexItem::Conjonction => Prop::Conjonction(left, right),
+                            ParenLexItem::Disjonction => Prop::Disjonction(left, right),
+                            ParenLexItem::Implication => Prop::Implication(left, right),
+                            ParenLexItem::Negation => unreachable!(),
+                            ParenLexItem::False => unreachable!(),
+                            ParenLexItem::Name(_) => unreachable!(),
+                            ParenLexItem::Paren(_) => unreachable!(),
+                        })
+                    }
                 } else {
                     Err("operator not found")
                 }

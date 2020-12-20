@@ -1,6 +1,7 @@
 use super::command::Command;
 use super::proof::Proof;
 use super::property::Prop;
+use super::sym;
 
 /// Represents any sequent, eg: `A->B, A |- B`
 #[derive(Debug, Clone)]
@@ -80,7 +81,8 @@ impl fmt::Display for Sequent {
         if !first {
             " ".fmt(f)?;
         }
-        "|- ".fmt(f)?;
+        sym::SEQUENT.fmt(f)?;
+        " ".fmt(f)?;
         self.conclusion.fmt(f)
     }
 }
