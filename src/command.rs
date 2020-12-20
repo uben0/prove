@@ -10,7 +10,7 @@ pub enum Command {
     ElimConjonction(Prop, Prop), // conj_e A, B
     IntroDisjonctionL,           // disj_i_l
     IntroDisjonctionR,           // disj_i_r
-    Weakened(Vec<usize>),        // aff E
+    Weakened(Vec<usize>),        // aff 0 1 2 ...
 }
 
 fn parse_name(buffer: &str) -> Result<&str, &'static str> {
@@ -30,19 +30,20 @@ fn props(buffer: &str) -> Result<Vec<Prop>, &'static str> {
             .map(|a| a.parse())
             .collect::<Result<_, _>>()?)
     } else {
-        Err("no args")
+        Ok(Vec::new())
     }
 }
 fn indexes(buffer: &str) -> Result<Vec<usize>, &'static str> {
     if let Some(pos) = buffer.find(' ') {
         let (_, args) = buffer.split_at(pos);
         Ok(args
-            .split(',')
+            .trim()
+            .split(' ')
             .map(|a| a.trim().parse::<usize>())
             .collect::<Result<_, _>>()
             .map_err(|_| "not an integer")?)
     } else {
-        Err("no args")
+        Ok(Vec::new())
     }
 }
 
