@@ -31,6 +31,7 @@ impl Sequent {
             Command::IntroDisjonctionL => Proof::disj_i_l(self),
             Command::IntroDisjonctionR => Proof::disj_i_r(self),
             Command::Weakened(e) => Proof::weakened(self, &e),
+            Command::Apply(i) => Proof::apply(self, i),
         } {
             self.proof = Some(proof.into());
             true

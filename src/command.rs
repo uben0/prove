@@ -11,6 +11,7 @@ pub enum Command {
     IntroDisjonctionL,
     IntroDisjonctionR,
     Weakened(Vec<usize>),
+    Apply(usize),
 }
 
 fn parse_name(buffer: &str) -> Result<&str, &'static str> {
@@ -59,7 +60,7 @@ impl FromStr for Command {
                 [] => Ok(Self::Hypothesis),
                 _ => ea0,
             },
-            "ii" => match &props(s)?[..] {
+            "i" => match &props(s)?[..] {
                 [] => Ok(Self::IntroImplication),
                 _ => ea0,
             },
@@ -91,7 +92,11 @@ impl FromStr for Command {
                 [] => Ok(Self::IntroDisjonctionR),
                 _ => ea0,
             },
-            "a" => Ok(Self::Weakened(indexes(s)?)),
+            "af" => Ok(Self::Weakened(indexes(s)?)),
+            "ap" => match &indexes(s)?[..] {
+                [i] => Ok(Self::Apply(*i)),
+                _ => ea1,
+            },
             _ => Err("unknown command"),
         }
     }

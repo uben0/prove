@@ -1,5 +1,6 @@
 use super::property::Prop;
 use super::sequent::Sequent;
+use super::command::Command;
 use super::label;
 
 /// Goes with a sequent as validation
@@ -131,6 +132,18 @@ impl Proof {
         } else {
             None
         }
+    }
+    pub fn apply(sequent: &Sequent, e: usize) -> Option<Self> {
+        sequent.hypotheses().get(e).map(|e| match e {
+            Prop::Implication(lhs, rhs) => if rhs.as_ref() == sequent.conclusion() {
+                let mut mp = Self::modus_ponens(sequent, lhs.as_ref());
+                mp.array_mut()[0].prove_by(Command::Hypothesis);
+                Some(mp)
+            } else {
+                None
+            }
+            _ => None,
+        }).flatten()
     }
     pub fn label(&self) -> &'static str {
         match self {
