@@ -1,3 +1,4 @@
+use super::command::Command;
 use super::proof::Proof;
 use super::property::Prop;
 
@@ -17,31 +18,17 @@ impl Sequent {
             proof: None,
         }
     }
-    pub fn prove(&mut self, proof: Proof) -> bool {
-        if proof.check(self, true) {
-            self.proof = Some(Box::new(proof));
+    pub fn prove_by(&mut self, cmd: Command) -> bool {
+        if let Some(proof) = match cmd {
+            Command::Hypothesis => Proof::hypothesis(self),
+            Command::IntroImplication => Proof::impl_intro(self),
+            Command::ElimDisjonction(a, b) => Some(Proof::disj_elim(self, &a, &b)),
+            Command::Exfalso => Some(Proof::exfalso(self))
+        } {
+            self.proof = Some(proof.into());
             true
         } else {
             false
-        }
-    }
-    pub fn prove_by_hyp(&mut self) -> bool {
-        self.prove(Proof::Hypothesis)
-    }
-    pub fn prove_by_impl_intro(&mut self) -> bool {
-        match self.conclusion() {
-            Prop::Implication(lhs, rhs) => {
-                let o = Sequent::new(
-                    self.hypotheses()
-                        .iter()
-                        .chain(std::iter::once(lhs.as_ref()))
-                        .cloned()
-                        .collect::<Vec<Prop>>(),
-                    rhs.as_ref().clone(),
-                );
-                self.prove(Proof::ImplicationIntro(o))
-            }
-            _ => false,
         }
     }
     pub fn hypotheses(&self) -> &[Prop] {
@@ -58,6 +45,11 @@ impl Sequent {
             match self.proof.as_mut().unwrap().as_mut() {
                 Proof::Hypothesis => None,
                 Proof::ImplicationIntro(o) => o.next_not_proven(),
+                Proof::DisjonctionElim(a_or_b, with_a, with_b) => a_or_b
+                    .next_not_proven()
+                    .or_else(move || with_a.next_not_proven())
+                    .or_else(move || with_b.next_not_proven()),
+                Proof::Exfalso(o) => o.next_not_proven(),
             }
         } else {
             Some(self)
@@ -98,12 +90,10 @@ impl FromStr for Sequent {
             [Some(left), Some(right), None] => {
                 let hypotheses: Vec<_> = if left.trim().is_empty() {
                     Vec::new()
-                }
-                else {
-                    left
-                    .split(',')
-                    .map(|h| h.parse())
-                    .collect::<Result<_, _>>()?
+                } else {
+                    left.split(',')
+                        .map(|h| h.parse())
+                        .collect::<Result<_, _>>()?
                 };
                 Ok(Self::new(hypotheses, right.parse()?))
             }
@@ -114,7 +104,7 @@ impl FromStr for Sequent {
 }
 
 mod render {
-    use super::{Proof, Sequent};
+    use super::{Sequent};
     use std::{io, io::Write};
 
     pub fn render_sequent_proof(sequent: &Sequent, output: &mut impl Write) -> io::Result<()> {
@@ -128,65 +118,74 @@ mod render {
 
     struct SequentGeom {
         bottom: String,
-        proof: Option<Box<ProofGeom>>,
+        proof: Option<Box<ProofRepr>>,
         width: usize,
         height: usize,
         bottom_x: usize,
         bottom_width: usize,
         center: usize,
     }
-    enum ProofGeom {
-        Hyp,
-        ImplIntro(SequentGeom),
+    
+    struct ProofRepr {
+        over: Vec<SequentGeom>,
+        name: String,
     }
-    impl ProofGeom {
-        fn name(&self) -> &'static str {
-            match self {
-                Self::Hyp => "hyp",
-                Self::ImplIntro(_) => "->i",
-            }
+    impl ProofRepr {
+        fn line_x(&self) -> Option<usize> {
+            self.over.split_first().map(|(f, _)| f.bottom_x)
+        }
+        fn line_width(&self) -> Option<usize> {
+            self.over.split_first().map(|(f, r)| {
+                r.split_last()
+                    .map(|(l, r)| {
+                        r.iter().map(|o| o.width + 4).sum::<usize>()
+                            + (f.width - f.bottom_x)
+                            + 4
+                            + (l.bottom_x + l.bottom_width)
+                    })
+                    .unwrap_or(f.bottom_width)
+            })
+        }
+        fn width(&self) -> Option<usize> {
+            self.over
+                .split_first()
+                .map(|(f, r)| f.width + r.iter().map(|o| o.width + 4).sum::<usize>())
+        }
+        fn height(&self) -> Option<usize> {
+            self.over.iter().map(|o| o.height).max()
         }
         fn split_center(&self) -> (usize, usize) {
-            match self {
-                Self::Hyp => (0, 0),
-                Self::ImplIntro(over) => {
-                    let center = over.bottom_x + over.bottom_width / 2;
-                    (center, over.width - center)
-                }
-            }
+            let center = self.line_x().unwrap_or(0) + self.line_width().unwrap_or(0) / 2;
+            (center, self.width().unwrap_or(0) - center)
         }
         fn split_bottom(&self) -> (usize, usize) {
-            match self {
-                Self::Hyp => (0, 0),
-                Self::ImplIntro(over) => {
-                    let middle = over.bottom_width / 2;
-                    (middle, over.bottom_width - middle)
-                }
-            }
+            let line_width = self.line_width().unwrap_or(0);
+            let middle = line_width / 2;
+            (middle, line_width - middle)
         }
     }
     impl SequentGeom {
         fn from(sequent: &Sequent) -> Self {
-            let proof = sequent.proof.as_ref().map(|p| match p.as_ref() {
-                Proof::Hypothesis => ProofGeom::Hyp,
-                Proof::ImplicationIntro(over) => ProofGeom::ImplIntro(SequentGeom::from(over)),
+            let proof_repr = sequent.proof.as_ref().map(|p| ProofRepr {
+                over: p.iter().map(|s| SequentGeom::from(s)).collect(),
+                name: p.label().to_owned(),
             });
 
             let bottom = sequent.to_string();
             let bottom_width = bottom.chars().count();
 
-            if let Some(proof) = proof {
-                if let Some((ul_x, ul_width, _u_width, u_height)) = match &proof {
-                    ProofGeom::Hyp => None,
-                    ProofGeom::ImplIntro(over) => {
-                        Some((over.bottom_x, over.bottom_width, over.width, over.height))
-                    }
-                } {
+            if let Some(proof) = proof_repr {
+                if let (Some(ul_x), Some(ul_width), Some(_u_width), Some(u_height)) = (
+                    proof.line_x(),
+                    proof.line_width(),
+                    proof.width(),
+                    proof.height(),
+                ) {
                     let (u_left, u_right) = proof.split_center();
                     let b_left = bottom_width / 2;
                     let b_right = bottom_width - b_left;
                     let center = u_left.max(b_left);
-                    let rule_len = proof.name().chars().count();
+                    let rule_len = proof.name.chars().count();
                     let rule_end =
                         (center + b_right).max(center - u_left + ul_x + ul_width) + rule_len;
                     let width = (center + u_right.max(b_right)).max(rule_end);
@@ -202,7 +201,7 @@ mod render {
                     }
                 } else {
                     Self {
-                        width: bottom_width + proof.name().chars().count(),
+                        width: bottom_width + proof.name.chars().count(),
                         height: 2,
                         bottom_x: 0,
                         center: bottom_width / 2,
@@ -236,40 +235,57 @@ mod render {
                     Ok(())
                 }
                 1 => {
-                    let proof = self.proof.as_ref().unwrap().as_ref();
-                    let (ub_left, ub_right) = proof.split_bottom();
-                    let b_left = self.bottom_width / 2;
-                    let b_right = self.bottom_width - b_left;
-                    let l_begin = self.center - b_left.max(ub_left);
-                    let l_end = self.center + b_right.max(ub_right);
-                    for _ in 0..l_begin {
-                        write!(out, " ")?;
+                    if let Some(proof) = self.proof.as_ref() {
+                        let proof = proof.as_ref();
+                        let (ub_left, ub_right) = proof.split_bottom();
+                        let b_left = self.bottom_width / 2;
+                        let b_right = self.bottom_width - b_left;
+                        let l_begin = self.center - b_left.max(ub_left);
+                        let l_end = self.center + b_right.max(ub_right);
+                        for _ in 0..l_begin {
+                            write!(out, " ")?;
+                        }
+                        for _ in l_begin..l_end {
+                            write!(out, "─")?;
+                        }
+                        write!(out, "{}", proof.name)?;
+                        for _ in (l_end + proof.name.chars().count())..self.width {
+                            write!(out, " ")?;
+                        }
+                        Ok(())
                     }
-                    for _ in l_begin..l_end {
-                        write!(out, "─")?;
+                    else {
+                        for _ in 0..self.width {
+                            write!(out, " ")?;
+                        }
+                        Ok(())
                     }
-                    write!(out, "{}", proof.name());
-                    for _ in (l_end + proof.name().chars().count())..self.width {
-                        write!(out, " ")?;
-                    }
-                    Ok(())
                 }
                 _ => {
-                    let proof = self.proof.as_ref().unwrap().as_ref();
-                    match proof {
-                        ProofGeom::ImplIntro(over) => {
-                            let line = line - 2;
-                            let (u_left, u_right) = proof.split_center();
-                            for _ in 0..(self.center - u_left) {
-                                write!(out, " ")?;
-                            }
-                            over.print_line(out, line)?;
-                            for _ in (self.center + u_right)..self.width {
-                                write!(out, " ")?;
-                            }
-                            Ok(())
+                    if let Some(proof) = self.proof.as_ref() {
+                        let proof = proof.as_ref();
+                        let line = line - 2;
+                        let (u_left, u_right) = proof.split_center();
+                        for _ in 0..(self.center - u_left) {
+                            write!(out, " ")?;
                         }
-                        _ => unreachable!(),
+                        let mut first = true;
+                        for o in &proof.over {
+                            if !first {
+                                write!(out, "    ")?;
+                            }
+                            first = false;
+                            o.print_line(out, line)?;
+                        }
+                        for _ in (self.center + u_right)..self.width {
+                            write!(out, " ")?;
+                        }
+                        Ok(())
+                    } else {
+                        for _ in 0..self.width {
+                            write!(out, " ")?;
+                        }
+                        Ok(())
                     }
                 }
             }

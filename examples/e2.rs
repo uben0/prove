@@ -1,6 +1,21 @@
-use proof::*;
+use prove::*;
+
+fn get_cmd(buffer: &mut String) -> Command {
+    loop {
+        buffer.clear();
+        std::io::stdin().read_line(buffer).unwrap();
+        match buffer.trim().parse() {
+            Ok(cmd) => return cmd,
+            Err(e) => {
+                println!("{}", e);
+            }
+        }
+    }
+}
 
 fn main() {
+    // |- P \/ Q -> (P->!) -> Q
+
     let mut buffer = String::new();
     println!("enter a sequent to prove:");
     buffer.clear();
@@ -14,16 +29,14 @@ fn main() {
             println!();
             println!();
             println!("prove: {}", not_proven);
-            buffer.clear();
-            std::io::stdin().read_line(&mut buffer).unwrap();
-            let c: Command = buffer.trim().parse().unwrap();
-            if !c.apply_on(not_proven) {
+            let c = get_cmd(&mut buffer);
+            if !not_proven.prove_by(c) {
                 println!("invalid application");
-                continue;
+                continue
             }
         }
         else {
-            return ();
+            return
         }
     }
 }
