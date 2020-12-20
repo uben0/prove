@@ -23,6 +23,7 @@ impl Sequent {
         if let Some(proof) = match cmd {
             Command::Hypothesis => Proof::hypothesis(self),
             Command::IntroImplication => Proof::impl_intro(self),
+            Command::IntrosImplication => Some(Proof::impl_intros(self)),
             Command::ElimDisjonction(a, b) => Some(Proof::disj_elim(self, &a, &b)),
             Command::Exfalso => Some(Proof::exfalso(self)),
             Command::ModusPonens(b) => Some(Proof::modus_ponens(self, &b)),

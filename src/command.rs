@@ -3,6 +3,7 @@ use super::property::Prop;
 pub enum Command {
     Hypothesis,
     IntroImplication,
+    IntrosImplication,
     ElimDisjonction(Prop, Prop),
     Exfalso,
     ModusPonens(Prop),
@@ -62,6 +63,10 @@ impl FromStr for Command {
             },
             "i" => match &props(s)?[..] {
                 [] => Ok(Self::IntroImplication),
+                _ => ea0,
+            },
+            "ii" => match &props(s)?[..] {
+                [] => Ok(Self::IntrosImplication),
                 _ => ea0,
             },
             "de" => match &props(s)?[..] {

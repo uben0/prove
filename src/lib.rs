@@ -23,6 +23,7 @@ mod label {
     pub const CONJONCTION_E: &str = "/\\e";
     pub const CONJONCTION_I: &str = "/\\i";
     pub const IMPLICATION_I: &str = "->i";
+    pub const IMPLICATION_IS: &str = "->i'";
     pub const FALSE_E: &str = "!e";
 }
 #[cfg(feature="unicode")]
@@ -34,6 +35,7 @@ mod label {
     pub const CONJONCTION_E: &str = "∧e";
     pub const CONJONCTION_I: &str = "∧i";
     pub const IMPLICATION_I: &str = "➔i";
+    pub const IMPLICATION_IS: &str = "➔i'";
     pub const FALSE_E: &str = "⊥e";
 }
 

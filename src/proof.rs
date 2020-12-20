@@ -8,6 +8,7 @@ use super::label;
 pub enum Proof {
     Hypothesis([Sequent; 0]),
     ImplicationIntro([Sequent; 1]),
+    ImplicationIntros([Sequent; 1]),
     DisjonctionElim([Sequent; 3]),
     DisjonctionIntroL([Sequent; 1]),
     DisjonctionIntroR([Sequent; 1]),
@@ -38,6 +39,13 @@ impl Proof {
             )])),
             _ => None,
         }
+    }
+    pub fn impl_intros(sequent: &Sequent) -> Self {
+        let mut s = sequent.clone();
+        while let Prop::Implication(lhs, rhs) = s.conclusion() {
+            s = Sequent::new(s.hypotheses().iter().chain(std::iter::once(lhs.as_ref())).cloned().collect(), rhs.as_ref().clone());
+        }
+        Self::ImplicationIntros([s])
     }
     pub fn disj_elim(sequent: &Sequent, a: &Prop, b: &Prop) -> Self {
         let a_or_b = Sequent::new(sequent.hypotheses().to_owned(), a.or(b));
@@ -149,6 +157,7 @@ impl Proof {
         match self {
             Self::Hypothesis(_) => label::HYPOTHESIS,
             Self::ImplicationIntro(_) => label::IMPLICATION_I,
+            Self::ImplicationIntros(_) => label::IMPLICATION_IS,
             Self::DisjonctionElim(_) => label::DISJONCTION_E,
             Self::DisjonctionIntroL(_) => label::DISJONCTION_I_L,
             Self::DisjonctionIntroR(_) => label::DISJONCTION_I_R,
@@ -163,6 +172,7 @@ impl Proof {
         match self {
             Self::Hypothesis(a) => a,
             Self::ImplicationIntro(a) => a,
+            Self::ImplicationIntros(a) => a,
             Self::DisjonctionElim(a) => a,
             Self::DisjonctionIntroL(a) => a,
             Self::DisjonctionIntroR(a) => a,
@@ -177,6 +187,7 @@ impl Proof {
         match self {
             Self::Hypothesis(a) => a,
             Self::ImplicationIntro(a) => a,
+            Self::ImplicationIntros(a) => a,
             Self::DisjonctionElim(a) => a,
             Self::DisjonctionIntroL(a) => a,
             Self::DisjonctionIntroR(a) => a,
