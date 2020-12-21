@@ -8,7 +8,7 @@ use super::sym;
 #[cfg(feature = "use_serde")]
 #[derive(serde::Deserialize, serde::Serialize)]
 #[cfg(feature = "use_serde")]
-#[serde(try_from="&str")]
+#[serde(try_from="String")]
 #[cfg(feature = "use_serde")]
 #[serde(into="String")]
 pub struct Sequent {
@@ -116,9 +116,9 @@ impl FromStr for Sequent {
         }
     }
 }
-impl std::convert::TryFrom<&str> for Sequent {
+impl std::convert::TryFrom<String> for Sequent {
     type Error = &'static str;
-    fn try_from(s: &str) -> Result<Self, Self::Error> {
+    fn try_from(s: String) -> Result<Self, Self::Error> {
         s.parse()
     }
 }
