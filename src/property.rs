@@ -6,6 +6,8 @@ use super::sym;
 #[derive(serde::Deserialize, serde::Serialize)]
 #[cfg(feature = "use_serde")]
 #[serde(try_from="&str")]
+#[cfg(feature = "use_serde")]
+#[serde(into="String")]
 pub enum Prop {
     False,
     Variable(String),
@@ -145,6 +147,11 @@ mod parser {
         type Error = &'static str;
         fn try_from(s: &str) -> Result<Self, Self::Error> {
             s.parse()
+        }
+    }
+    impl std::convert::From<Prop> for String {
+        fn from(p: Prop) -> Self {
+            p.to_string()
         }
     }
 

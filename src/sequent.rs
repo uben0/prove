@@ -9,11 +9,11 @@ use super::sym;
 #[derive(serde::Deserialize, serde::Serialize)]
 #[cfg(feature = "use_serde")]
 #[serde(try_from="&str")]
+#[cfg(feature = "use_serde")]
+#[serde(into="String")]
 pub struct Sequent {
     hypotheses: Vec<Prop>,
     conclusion: Prop,
-    #[cfg(feature = "use_serde")]
-    #[serde(skip)]
     proof: Option<Box<Proof>>,
 }
 
@@ -120,6 +120,11 @@ impl std::convert::TryFrom<&str> for Sequent {
     type Error = &'static str;
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         s.parse()
+    }
+}
+impl std::convert::From<Sequent> for String {
+    fn from(s: Sequent) -> Self {
+        s.to_string()
     }
 }
 
