@@ -1,7 +1,7 @@
 use super::property::Prop;
 use super::sequent::Sequent;
 use super::command::Command;
-use super::label;
+use super::symbols as sym;
 
 /// Goes with a sequent as validation
 #[derive(Debug, Clone)]
@@ -155,15 +155,15 @@ impl Proof {
     }
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Hypothesis(_) => label::HYPOTHESIS,
-            Self::ImplicationIntro(_) => label::IMPLICATION_I,
-            Self::ImplicationIntros(_) => label::IMPLICATION_IS,
-            Self::DisjonctionElim(_) => label::DISJONCTION_E,
-            Self::DisjonctionIntroL(_) => label::DISJONCTION_I_L,
-            Self::DisjonctionIntroR(_) => label::DISJONCTION_I_R,
-            Self::ConjonctionElim(_) => label::CONJONCTION_E,
-            Self::ConjonctionIntro(_) => label::CONJONCTION_I,
-            Self::Exfalso(_) => label::FALSE_E,
+            Self::Hypothesis(_) => sym::repr::HYPOTHESIS,
+            Self::ImplicationIntro(_) => sym::repr::IMPLICATION_I,
+            Self::ImplicationIntros(_) => sym::repr::IMPLICATION_IS,
+            Self::DisjonctionElim(_) => sym::repr::DISJONCTION_E,
+            Self::DisjonctionIntroL(_) => sym::repr::DISJONCTION_I_L,
+            Self::DisjonctionIntroR(_) => sym::repr::DISJONCTION_I_R,
+            Self::ConjonctionElim(_) => sym::repr::CONJONCTION_E,
+            Self::ConjonctionIntro(_) => sym::repr::CONJONCTION_I,
+            Self::Exfalso(_) => sym::repr::FALSE_E,
             Self::ModusPonens(_) => "mp",
             Self::Weakened(_) => "aff",
         }

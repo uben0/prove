@@ -1,16 +1,16 @@
 use super::command::Command;
 use super::proof::Proof;
 use super::property::Prop;
-use super::sym;
+use super::symbols as sym;
 
 /// Represents any sequent, eg: `A->B, A |- B`
 #[derive(Debug, Clone)]
-#[cfg(feature = "use_serde")]
-#[derive(serde::Deserialize, serde::Serialize)]
-#[cfg(feature = "use_serde")]
-#[serde(try_from="String")]
-#[cfg(feature = "use_serde")]
-#[serde(into="String")]
+#[cfg_attr(
+    feature = "use_serde",
+    derive(serde::Deserialize, serde::Serialize),
+    serde(try_from = "String"),
+    serde(into = "String")
+)]
 pub struct Sequent {
     hypotheses: Vec<Prop>,
     conclusion: Prop,
@@ -73,25 +73,58 @@ impl Sequent {
         let mut output = lock.lock();
         render::render_sequent_proof(self, &mut output, alternate).unwrap();
     }
+    pub fn repr_len(&self) -> usize {
+        let mut r = sym::repr::SEQUENT.chars().count() + 1 +
+        self.conclusion().repr_len();
+        let mut first = true;
+        for h in self.hypotheses() {
+            if !first {
+                r += 2;
+            }
+            first = false;
+            r += h.repr_len();
+        }
+        if !self.hypotheses().is_empty() {
+            r += 1;
+        }
+        r
+    }
 }
-
 use std::fmt;
 impl fmt::Display for Sequent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut first = true;
-        for h in &self.hypotheses {
-            if !first {
-                ", ".fmt(f)?;
+        if f.alternate() {
+            let mut first = true;
+            for h in &self.hypotheses {
+                if !first {
+                    ", ".fmt(f)?;
+                }
+                first = false;
+                h.fmt(f)?;
             }
-            first = false;
-            h.fmt(f)?;
-        }
-        if !first {
+            if !first {
+                " ".fmt(f)?;
+            }
+            "\x1b[1m".fmt(f)?;
+            sym::repr::SEQUENT.fmt(f)?;
+            "\x1b[0m ".fmt(f)?;
+            self.conclusion.fmt(f)
+        } else {
+            let mut first = true;
+            for h in &self.hypotheses {
+                if !first {
+                    sym::lex::COMMA.fmt(f)?;
+                }
+                first = false;
+                h.fmt(f)?;
+            }
+            if !first {
+                " ".fmt(f)?;
+            }
+            sym::lex::SEQUENT.fmt(f)?;
             " ".fmt(f)?;
+            self.conclusion.fmt(f)
         }
-        sym::SEQUENT.fmt(f)?;
-        " ".fmt(f)?;
-        self.conclusion.fmt(f)
     }
 }
 
@@ -129,11 +162,15 @@ impl std::convert::From<Sequent> for String {
 }
 
 mod render {
-    use super::{Sequent, Prop, sym};
+    use super::Sequent;
     use std::{io, io::Write};
 
-    pub fn render_sequent_proof(sequent: &Sequent, output: &mut impl Write, alternate: bool) -> io::Result<()> {
-        let sg = SequentGeom::from(sequent);
+    pub fn render_sequent_proof(
+        sequent: &Sequent,
+        output: &mut impl Write,
+        alternate: bool,
+    ) -> io::Result<()> {
+        let sg = SequentGeom::from(sequent, alternate);
         for y in (0..sg.height).rev() {
             sg.print_line(output, y, alternate)?;
             writeln!(output)?;
@@ -142,9 +179,7 @@ mod render {
     }
 
     struct SequentGeom {
-        hypotheses: Vec<Prop>,
-        conclusion: Prop,
-        bottom: String,
+        bottom_repr: String,
         proof: Option<Box<ProofRepr>>,
         width: usize,
         height: usize,
@@ -191,14 +226,22 @@ mod render {
         }
     }
     impl SequentGeom {
-        fn from(sequent: &Sequent) -> Self {
+        fn from(sequent: &Sequent, alternate: bool) -> Self {
             let proof_repr = sequent.proof.as_ref().map(|p| ProofRepr {
-                over: p.nodes().iter().map(|s| SequentGeom::from(s)).collect(),
+                over: p
+                    .nodes()
+                    .iter()
+                    .map(|s| SequentGeom::from(s, alternate))
+                    .collect(),
                 name: p.label().to_owned(),
             });
 
-            let bottom = sequent.to_string();
-            let bottom_width = bottom.chars().count();
+            let bottom_repr = if alternate {
+                format!("{:#}", sequent)
+            } else {
+                sequent.to_string()
+            };
+            let bottom_width = sequent.repr_len();
 
             if let Some(proof) = proof_repr {
                 if let (Some(ul_x), Some(ul_width), Some(_u_width), Some(u_height)) = (
@@ -217,39 +260,33 @@ mod render {
                     let width = (center + u_right.max(b_right)).max(rule_end);
                     let bottom_x = center - b_left;
                     Self {
-                        hypotheses: sequent.hypotheses().to_owned(),
-                        conclusion: sequent.conclusion().clone(),
                         width,
                         height: u_height + 2,
                         bottom_x,
                         bottom_width,
                         center,
                         proof: Some(proof.into()),
-                        bottom,
+                        bottom_repr,
                     }
                 } else {
                     Self {
-                        hypotheses: sequent.hypotheses().to_owned(),
-                        conclusion: sequent.conclusion().clone(),
                         width: bottom_width + proof.name.chars().count(),
                         height: 2,
                         bottom_x: 0,
                         center: bottom_width / 2,
                         bottom_width,
                         proof: Some(proof.into()),
-                        bottom,
+                        bottom_repr,
                     }
                 }
             } else {
                 Self {
-                    hypotheses: sequent.hypotheses().to_owned(),
-                    conclusion: sequent.conclusion().clone(),
                     width: bottom_width,
                     center: bottom_width / 2,
                     height: 1,
                     bottom_x: 0,
                     bottom_width,
-                    bottom,
+                    bottom_repr,
                     proof: None,
                 }
             }
@@ -260,22 +297,7 @@ mod render {
                     for _ in 0..self.bottom_x {
                         write!(out, " ")?;
                     }
-                    if alternate {
-                        let mut first = true;
-                        for h in &self.hypotheses {
-                            if !first {
-                                write!(out, ", ")?;
-                            }
-                            first = false;
-                            write!(out, "{:#}", h)?;
-                        }
-                        if !first {
-                            write!(out, " ")?;
-                        }
-                        write!(out, "\x1b[1m{}\x1b[0m {:#}", sym::SEQUENT, self.conclusion)?;
-                    } else {
-                        write!(out, "{}", self.bottom)?;
-                    }
+                    write!(out, "{}", self.bottom_repr)?;
                     for _ in (self.bottom_x + self.bottom_width)..self.width {
                         write!(out, " ")?;
                     }

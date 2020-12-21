@@ -1,13 +1,13 @@
-use super::sym;
+use super::symbols as sym;
 
 /// Represents any property, eg: `A/\B->B`
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg(feature = "use_serde")]
-#[derive(serde::Deserialize, serde::Serialize)]
-#[cfg(feature = "use_serde")]
-#[serde(try_from="String")]
-#[cfg(feature = "use_serde")]
-#[serde(into="String")]
+#[cfg_attr(
+    feature = "use_serde",
+    derive(serde::Deserialize, serde::Serialize),
+    serde(try_from = "String"),
+    serde(into = "String")
+)]
 pub enum Prop {
     False,
     Variable(String),
@@ -53,6 +53,21 @@ impl Prop {
             }
         }
     }
+    pub fn repr_len(&self) -> usize {
+        match self {
+            Self::False => sym::repr::FALSE.len(),
+            Self::Variable(name) => name.chars().count(),
+            Self::Conjonction(lhs, rhs) => {
+                lhs.repr_len() + sym::repr::CONJONCTION.chars().count() + rhs.repr_len()
+            }
+            Self::Disjonction(lhs, rhs) => {
+                lhs.repr_len() + sym::repr::DISJONCTION.chars().count() + rhs.repr_len()
+            }
+            Self::Implication(lhs, rhs) => {
+                lhs.repr_len() + sym::repr::IMPLICATION.chars().count() + rhs.repr_len()
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq)]
@@ -67,67 +82,158 @@ impl Precedence {
 use std::fmt;
 impl fmt::Display for Prop {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (po, pc) = if f.alternate() {
-            ("\x1b[2m(\x1b[0m", "\x1b[2m)\x1b[0m")
-        } else {
-            ("(", ")")
-        };
-        let display_binary_op = |f: &mut fmt::Formatter<'_>,
-                                 lhs: &Prop,
-                                 rhs: &Prop,
-                                 repr: &str,
-                                 preced: Precedence|
-         -> fmt::Result {
-            if lhs.precedence() >= preced {
-                po.fmt(f)?;
-                lhs.fmt(f)?;
-                pc.fmt(f)?;
-            } else {
-                lhs.fmt(f)?;
+        if f.alternate() {
+            fn paren(f: &mut fmt::Formatter<'_>, p: &Prop) -> fmt::Result {
+                "\x1b[2m".fmt(f)?;
+                sym::repr::PARENTHESIS_OPEN.fmt(f)?;
+                "\x1b[0m".fmt(f)?;
+                p.fmt(f)?;
+                "\x1b[2m".fmt(f)?;
+                sym::repr::PARENTHESIS_CLOSE.fmt(f)?;
+                "\x1b[0m".fmt(f)
             }
-            repr.fmt(f)?;
-            if rhs.precedence() > preced {
-                po.fmt(f)?;
-                rhs.fmt(f)?;
-                pc.fmt(f)
-            } else {
-                rhs.fmt(f)
+            fn bin_op(
+                f: &mut fmt::Formatter<'_>,
+                lhs: &Prop,
+                rhs: &Prop,
+                repr: &str,
+                preced: Precedence,
+            ) -> fmt::Result {
+                if lhs.precedence() >= preced {
+                    paren(f, lhs)?;
+                } else {
+                    lhs.fmt(f)?;
+                }
+                repr.fmt(f)?;
+                if rhs.precedence() > preced {
+                    paren(f, rhs)
+                } else {
+                    rhs.fmt(f)
+                }
             }
-        };
-        match self {
-            Self::False => sym::FALSE.fmt(f),
-            Self::Variable(name) => {
-                if f.alternate() {
+            match self {
+                Self::False => sym::repr::FALSE.fmt(f),
+                Self::Variable(name) => {
                     "\x1b[96m".fmt(f)?;
                     name.fmt(f)?;
                     "\x1b[0m".fmt(f)
-                } else {
-                    name.fmt(f)
+                }
+                Self::Implication(lhs, rhs) => {
+                    bin_op(f, lhs, rhs, sym::repr::IMPLICATION, Precedence::IMPLICATION)
+                }
+                Self::Conjonction(lhs, rhs) => {
+                    bin_op(f, lhs, rhs, sym::repr::CONJONCTION, Precedence::CONJONCTION)
+                }
+                Self::Disjonction(lhs, rhs) => {
+                    bin_op(f, lhs, rhs, sym::repr::DISJONCTION, Precedence::DISJONCTION)
                 }
             }
-            Self::Conjonction(lhs, rhs) => {
-                display_binary_op(f, lhs, rhs, sym::CONJONCTION, Precedence::CONJONCTION)
+        } else {
+            fn paren(f: &mut fmt::Formatter<'_>, p: &Prop) -> fmt::Result {
+                sym::lex::PARENTHESIS_OPEN.fmt(f)?;
+                p.fmt(f)?;
+                sym::lex::PARENTHESIS_CLOSE.fmt(f)
             }
-            Self::Disjonction(lhs, rhs) => {
-                display_binary_op(f, lhs, rhs, sym::DISJONCTION, Precedence::DISJONCTION)
-            }
-            Self::Implication(lhs, rhs) => {
-                if rhs.as_ref() == &Self::False {
-                    "~".fmt(f)?;
-                    if lhs.precedence() > Precedence::ATOMIC {
-                        po.fmt(f)?;
-                        lhs.fmt(f)?;
-                        pc.fmt(f)
-                    } else {
-                        lhs.fmt(f)
-                    }
+            fn bin_op(
+                f: &mut fmt::Formatter<'_>,
+                lhs: &Prop,
+                rhs: &Prop,
+                repr: &str,
+                preced: Precedence,
+            ) -> fmt::Result {
+                if lhs.precedence() >= preced {
+                    paren(f, lhs)?;
                 } else {
-                    display_binary_op(f, lhs, rhs, sym::IMPLICATION, Precedence::IMPLICATION)
+                    lhs.fmt(f)?;
+                }
+                repr.fmt(f)?;
+                if rhs.precedence() > preced {
+                    paren(f, rhs)
+                } else {
+                    rhs.fmt(f)
+                }
+            }
+            match self {
+                Self::False => sym::lex::FALSE.fmt(f),
+                Self::Variable(name) => name.fmt(f),
+                Self::Implication(lhs, rhs) => {
+                    bin_op(f, lhs, rhs, sym::lex::IMPLICATION, Precedence::IMPLICATION)
+                }
+                Self::Conjonction(lhs, rhs) => {
+                    bin_op(f, lhs, rhs, sym::lex::CONJONCTION, Precedence::CONJONCTION)
+                }
+                Self::Disjonction(lhs, rhs) => {
+                    bin_op(f, lhs, rhs, sym::lex::DISJONCTION, Precedence::DISJONCTION)
                 }
             }
         }
     }
 }
+
+// use std::fmt;
+// impl fmt::Display for Prop {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         let (po, pc) = if f.alternate() {
+//             ("\x1b[2m(\x1b[0m", "\x1b[2m)\x1b[0m")
+//         } else {
+//             ("(", ")")
+//         };
+//         let display_binary_op = |f: &mut fmt::Formatter<'_>,
+//                                  lhs: &Prop,
+//                                  rhs: &Prop,
+//                                  repr: &str,
+//                                  preced: Precedence|
+//          -> fmt::Result {
+//             if lhs.precedence() >= preced {
+//                 po.fmt(f)?;
+//                 lhs.fmt(f)?;
+//                 pc.fmt(f)?;
+//             } else {
+//                 lhs.fmt(f)?;
+//             }
+//             repr.fmt(f)?;
+//             if rhs.precedence() > preced {
+//                 po.fmt(f)?;
+//                 rhs.fmt(f)?;
+//                 pc.fmt(f)
+//             } else {
+//                 rhs.fmt(f)
+//             }
+//         };
+//         match self {
+//             Self::False => sym::FALSE.fmt(f),
+//             Self::Variable(name) => {
+//                 if f.alternate() {
+//                     "\x1b[96m".fmt(f)?;
+//                     name.fmt(f)?;
+//                     "\x1b[0m".fmt(f)
+//                 } else {
+//                     name.fmt(f)
+//                 }
+//             }
+//             Self::Conjonction(lhs, rhs) => {
+//                 display_binary_op(f, lhs, rhs, sym::CONJONCTION, Precedence::CONJONCTION)
+//             }
+//             Self::Disjonction(lhs, rhs) => {
+//                 display_binary_op(f, lhs, rhs, sym::DISJONCTION, Precedence::DISJONCTION)
+//             }
+//             Self::Implication(lhs, rhs) => {
+//                 if rhs.as_ref() == &Self::False {
+//                     "~".fmt(f)?;
+//                     if lhs.precedence() > Precedence::ATOMIC {
+//                         po.fmt(f)?;
+//                         lhs.fmt(f)?;
+//                         pc.fmt(f)
+//                     } else {
+//                         lhs.fmt(f)
+//                     }
+//                 } else {
+//                     display_binary_op(f, lhs, rhs, sym::IMPLICATION, Precedence::IMPLICATION)
+//                 }
+//             }
+//         }
+//     }
+// }
 
 mod parser {
     use super::{Precedence, Prop};
