@@ -145,7 +145,7 @@ impl Proof {
         sequent.hypotheses().get(e).map(|e| match e {
             Prop::Implication(lhs, rhs) => if rhs.as_ref() == sequent.conclusion() {
                 let mut mp = Self::modus_ponens(sequent, lhs.as_ref());
-                mp.array_mut()[0].prove_by(Command::Hypothesis);
+                mp.nodes_mut()[0].prove_by(Command::Hypothesis);
                 Some(mp)
             } else {
                 None
@@ -168,7 +168,7 @@ impl Proof {
             Self::Weakened(_) => "aff",
         }
     }
-    pub fn array(&self) -> &[Sequent] {
+    pub fn nodes(&self) -> &[Sequent] {
         match self {
             Self::Hypothesis(a) => a,
             Self::ImplicationIntro(a) => a,
@@ -183,7 +183,7 @@ impl Proof {
             Self::Weakened(a) => a,
         }
     }
-    pub fn array_mut(&mut self) -> &mut [Sequent] {
+    pub fn nodes_mut(&mut self) -> &mut [Sequent] {
         match self {
             Self::Hypothesis(a) => a,
             Self::ImplicationIntro(a) => a,
@@ -197,19 +197,5 @@ impl Proof {
             Self::ModusPonens(a) => a,
             Self::Weakened(a) => a,
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    #[test]
-    fn iter_eq() {
-        assert!(![0, 1, 2].iter().eq([0, 1].iter()));
-        assert!(![0, 1].iter().eq([0, 1, 2].iter()));
-    }
-    #[test]
-    fn slice_eq() {
-        assert!(!([0, 1, 2][..] == [0, 1][..]));
-        assert!(!([0, 1][..] == [0, 1, 2][..]));
     }
 }

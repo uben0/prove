@@ -2,6 +2,10 @@ use super::sym;
 
 /// Represents any property, eg: `A/\B->B`
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg(feature = "use_serde")]
+#[derive(serde::Deserialize, serde::Serialize)]
+#[cfg(feature = "use_serde")]
+#[serde(try_from="&str")]
 pub enum Prop {
     False,
     Variable(String),
@@ -135,6 +139,12 @@ mod parser {
             let iter = ParenLexer(&mut lexer);
             let v: Vec<_> = iter.collect::<Result<_, _>>().unwrap();
             syntax_parse(&v)
+        }
+    }
+    impl std::convert::TryFrom<&str> for Prop {
+        type Error = &'static str;
+        fn try_from(s: &str) -> Result<Self, Self::Error> {
+            s.parse()
         }
     }
 

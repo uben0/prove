@@ -5,9 +5,15 @@ use super::sym;
 
 /// Represents any sequent, eg: `A->B, A |- B`
 #[derive(Debug, Clone)]
+#[cfg(feature = "use_serde")]
+#[derive(serde::Deserialize, serde::Serialize)]
+#[cfg(feature = "use_serde")]
+#[serde(try_from="&str")]
 pub struct Sequent {
     hypotheses: Vec<Prop>,
     conclusion: Prop,
+    #[cfg(feature = "use_serde")]
+    #[serde(skip)]
     proof: Option<Box<Proof>>,
 }
 
@@ -51,7 +57,7 @@ impl Sequent {
     }
     pub fn next_not_proven(&mut self) -> Option<&mut Self> {
         if self.proof.is_some() {
-            let array = self.proof.as_mut().unwrap().array_mut();
+            let array = self.proof.as_mut().unwrap().nodes_mut();
             for o in array {
                 if let Some(next_not_proven) = o.next_not_proven() {
                     return Some(next_not_proven);
@@ -108,6 +114,12 @@ impl FromStr for Sequent {
             [Some(prop), None, None] => Ok(Self::new(Vec::new(), prop.parse()?)),
             _ => Err("expecting only one sequent symbol"),
         }
+    }
+}
+impl std::convert::TryFrom<&str> for Sequent {
+    type Error = &'static str;
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        s.parse()
     }
 }
 
@@ -176,7 +188,7 @@ mod render {
     impl SequentGeom {
         fn from(sequent: &Sequent) -> Self {
             let proof_repr = sequent.proof.as_ref().map(|p| ProofRepr {
-                over: p.array().iter().map(|s| SequentGeom::from(s)).collect(),
+                over: p.nodes().iter().map(|s| SequentGeom::from(s)).collect(),
                 name: p.label().to_owned(),
             });
 

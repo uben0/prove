@@ -9,5 +9,7 @@ edition = "2018"
 [features]
 default = ["unicode"]
 unicode = []
+use_serde = ["serde"]
 
 [dependencies]
+serde = {version="1.0", optional=true, features=["derive"]}
