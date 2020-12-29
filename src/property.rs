@@ -1,19 +1,15 @@
-use super::symbols as sym;
+use super::symbols;
+use std::fmt;
 
 /// Represents any property, eg: `A/\B->B`
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[cfg_attr(
-    feature = "use_serde",
-    derive(serde::Deserialize, serde::Serialize),
-    serde(try_from = "String"),
-    serde(into = "String")
-)]
 pub enum Prop {
     False,
     Variable(String),
     Conjonction(Box<Prop>, Box<Prop>),
     Disjonction(Box<Prop>, Box<Prop>),
     Implication(Box<Prop>, Box<Prop>),
+    Equivalence(Box<Prop>, Box<Prop>),
 }
 
 impl Prop {
@@ -37,35 +33,27 @@ impl Prop {
     pub fn negate(&self) -> Self {
         self.implies(&Self::False)
     }
-
-    fn precedence(&self) -> Precedence {
+    /// Wraps a property to control the way it will be displayed
+    pub fn repr(&self) -> PropRepr {
+        self.repr_conf(Default::default())
+    }
+    pub fn repr_conf(&self, conf: symbols::ReprConf) -> PropRepr {
+        PropRepr { prop: self, conf }
+    }
+    fn precedence(&self, negation: bool) -> Precedence {
         match self {
             Self::False => Precedence::ATOMIC,
             Self::Variable(_) => Precedence::ATOMIC,
             Self::Conjonction(_, _) => Precedence::CONJONCTION,
             Self::Disjonction(_, _) => Precedence::DISJONCTION,
-            Self::Implication(_, rhs) => {
-                if let Self::False = rhs.as_ref() {
-                    Precedence::ATOMIC
+            Self::Implication(_, lhs) => {
+                if negation && lhs.as_ref() == &Self::False {
+                    Precedence::NEGATION
                 } else {
                     Precedence::IMPLICATION
                 }
             }
-        }
-    }
-    pub fn repr_len(&self) -> usize {
-        match self {
-            Self::False => sym::repr::FALSE.len(),
-            Self::Variable(name) => name.chars().count(),
-            Self::Conjonction(lhs, rhs) => {
-                lhs.repr_len() + sym::repr::CONJONCTION.chars().count() + rhs.repr_len()
-            }
-            Self::Disjonction(lhs, rhs) => {
-                lhs.repr_len() + sym::repr::DISJONCTION.chars().count() + rhs.repr_len()
-            }
-            Self::Implication(lhs, rhs) => {
-                lhs.repr_len() + sym::repr::IMPLICATION.chars().count() + rhs.repr_len()
-            }
+            Self::Equivalence(_, _) => Precedence::EQUIVALENCE,
         }
     }
 }
@@ -74,208 +62,195 @@ impl Prop {
 struct Precedence(usize);
 impl Precedence {
     const ATOMIC: Self = Self(0);
-    const CONJONCTION: Self = Self(1);
-    const DISJONCTION: Self = Self(2);
-    const IMPLICATION: Self = Self(3);
+    const NEGATION: Self = Self(1);
+    const CONJONCTION: Self = Self(2);
+    const DISJONCTION: Self = Self(3);
+    const IMPLICATION: Self = Self(4);
+    const EQUIVALENCE: Self = Self(5);
 }
 
-use std::fmt;
-impl fmt::Display for Prop {
+#[derive(Clone)]
+pub struct PropRepr<'a> {
+    prop: &'a Prop,
+    conf: symbols::ReprConf,
+}
+impl<'a> PropRepr<'a> {
+    pub fn formated(mut self) -> Self {
+        self.conf.formated = true;
+        self
+    }
+    pub fn unicode(mut self) -> Self {
+        self.conf.unicode = true;
+        self
+    }
+    pub fn negation(mut self) -> Self {
+        self.conf.negation = true;
+        self
+    }
+    pub fn len(&self) -> usize {
+        let mut repr = self.clone();
+        repr.conf.formated = false;
+        repr.to_string().len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    fn precedence(&self) -> Precedence {
+        self.prop.precedence(self.conf.negation)
+    }
+}
+impl<'a> fmt::Display for PropRepr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if f.alternate() {
-            fn paren(f: &mut fmt::Formatter<'_>, p: &Prop) -> fmt::Result {
-                "\x1b[2m".fmt(f)?;
-                sym::repr::PARENTHESIS_OPEN.fmt(f)?;
-                "\x1b[0m".fmt(f)?;
-                p.fmt(f)?;
-                "\x1b[2m".fmt(f)?;
-                sym::repr::PARENTHESIS_CLOSE.fmt(f)?;
-                "\x1b[0m".fmt(f)
+        fn bin_op(
+            f: &mut fmt::Formatter<'_>,
+            lhs: &Prop,
+            rhs: &Prop,
+            conf: symbols::ReprConf,
+            preced: Precedence,
+            sym: symbols::Sym,
+        ) -> fmt::Result {
+            let (lhs, rhs) = (PropRepr { prop: lhs, conf }, PropRepr { prop: rhs, conf });
+            if lhs.precedence() >= preced {
+                symbols::Paren(lhs, conf).fmt(f)?;
+            } else {
+                lhs.fmt(f)?;
             }
-            fn bin_op(
-                f: &mut fmt::Formatter<'_>,
-                lhs: &Prop,
-                rhs: &Prop,
-                repr: &str,
-                preced: Precedence,
-            ) -> fmt::Result {
-                if lhs.precedence() >= preced {
-                    paren(f, lhs)?;
+            sym.fmt(conf, f)?;
+            if rhs.precedence() > preced {
+                symbols::Paren(rhs, conf).fmt(f)
+            } else {
+                rhs.fmt(f)
+            }
+        }
+        match self.prop {
+            Prop::False => symbols::Sym::False.fmt(self.conf, f),
+            Prop::Variable(name) => {
+                if self.conf.formated {
+                    if self.conf.emphazis {
+                        "\x1b[96m"
+                    } else {
+                        "\x1b[92m"
+                    }.fmt(f)?;
+                }
+                name.fmt(f)?;
+                if self.conf.formated {
+                    "\x1b[0m".fmt(f)?
+                }
+                Ok(())
+            }
+            Prop::Conjonction(lhs, rhs) => bin_op(
+                f,
+                lhs,
+                rhs,
+                self.conf,
+                self.precedence(),
+                symbols::Sym::Conjonction,
+            ),
+            Prop::Disjonction(lhs, rhs) => bin_op(
+                f,
+                lhs,
+                rhs,
+                self.conf,
+                self.precedence(),
+                symbols::Sym::Disjonction,
+            ),
+            Prop::Implication(lhs, rhs) => {
+                if self.conf.negation && rhs.as_ref() == &Prop::False {
+                    let lhs = PropRepr {
+                        prop: lhs,
+                        conf: self.conf,
+                    };
+                    symbols::Sym::Negation.fmt(self.conf, f)?;
+                    if lhs.precedence() > self.precedence() {
+                        symbols::Paren(lhs, self.conf).fmt(f)
+                    } else {
+                        lhs.fmt(f)
+                    }
                 } else {
-                    lhs.fmt(f)?;
-                }
-                repr.fmt(f)?;
-                if rhs.precedence() > preced {
-                    paren(f, rhs)
-                } else {
-                    rhs.fmt(f)
-                }
-            }
-            match self {
-                Self::False => sym::repr::FALSE.fmt(f),
-                Self::Variable(name) => {
-                    "\x1b[96m".fmt(f)?;
-                    name.fmt(f)?;
-                    "\x1b[0m".fmt(f)
-                }
-                Self::Implication(lhs, rhs) => {
-                    bin_op(f, lhs, rhs, sym::repr::IMPLICATION, Precedence::IMPLICATION)
-                }
-                Self::Conjonction(lhs, rhs) => {
-                    bin_op(f, lhs, rhs, sym::repr::CONJONCTION, Precedence::CONJONCTION)
-                }
-                Self::Disjonction(lhs, rhs) => {
-                    bin_op(f, lhs, rhs, sym::repr::DISJONCTION, Precedence::DISJONCTION)
+                    bin_op(
+                        f,
+                        lhs,
+                        rhs,
+                        self.conf,
+                        self.precedence(),
+                        symbols::Sym::Implication,
+                    )
                 }
             }
-        } else {
-            fn paren(f: &mut fmt::Formatter<'_>, p: &Prop) -> fmt::Result {
-                sym::lex::PARENTHESIS_OPEN.fmt(f)?;
-                p.fmt(f)?;
-                sym::lex::PARENTHESIS_CLOSE.fmt(f)
-            }
-            fn bin_op(
-                f: &mut fmt::Formatter<'_>,
-                lhs: &Prop,
-                rhs: &Prop,
-                repr: &str,
-                preced: Precedence,
-            ) -> fmt::Result {
-                if lhs.precedence() >= preced {
-                    paren(f, lhs)?;
-                } else {
-                    lhs.fmt(f)?;
-                }
-                repr.fmt(f)?;
-                if rhs.precedence() > preced {
-                    paren(f, rhs)
-                } else {
-                    rhs.fmt(f)
-                }
-            }
-            match self {
-                Self::False => sym::lex::FALSE.fmt(f),
-                Self::Variable(name) => name.fmt(f),
-                Self::Implication(lhs, rhs) => {
-                    bin_op(f, lhs, rhs, sym::lex::IMPLICATION, Precedence::IMPLICATION)
-                }
-                Self::Conjonction(lhs, rhs) => {
-                    bin_op(f, lhs, rhs, sym::lex::CONJONCTION, Precedence::CONJONCTION)
-                }
-                Self::Disjonction(lhs, rhs) => {
-                    bin_op(f, lhs, rhs, sym::lex::DISJONCTION, Precedence::DISJONCTION)
-                }
-            }
+            Prop::Equivalence(lhs, rhs) => bin_op(
+                f,
+                lhs,
+                rhs,
+                self.conf,
+                self.precedence(),
+                symbols::Sym::Equivalence,
+            ),
         }
     }
 }
-
-// use std::fmt;
-// impl fmt::Display for Prop {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         let (po, pc) = if f.alternate() {
-//             ("\x1b[2m(\x1b[0m", "\x1b[2m)\x1b[0m")
-//         } else {
-//             ("(", ")")
-//         };
-//         let display_binary_op = |f: &mut fmt::Formatter<'_>,
-//                                  lhs: &Prop,
-//                                  rhs: &Prop,
-//                                  repr: &str,
-//                                  preced: Precedence|
-//          -> fmt::Result {
-//             if lhs.precedence() >= preced {
-//                 po.fmt(f)?;
-//                 lhs.fmt(f)?;
-//                 pc.fmt(f)?;
-//             } else {
-//                 lhs.fmt(f)?;
-//             }
-//             repr.fmt(f)?;
-//             if rhs.precedence() > preced {
-//                 po.fmt(f)?;
-//                 rhs.fmt(f)?;
-//                 pc.fmt(f)
-//             } else {
-//                 rhs.fmt(f)
-//             }
-//         };
-//         match self {
-//             Self::False => sym::FALSE.fmt(f),
-//             Self::Variable(name) => {
-//                 if f.alternate() {
-//                     "\x1b[96m".fmt(f)?;
-//                     name.fmt(f)?;
-//                     "\x1b[0m".fmt(f)
-//                 } else {
-//                     name.fmt(f)
-//                 }
-//             }
-//             Self::Conjonction(lhs, rhs) => {
-//                 display_binary_op(f, lhs, rhs, sym::CONJONCTION, Precedence::CONJONCTION)
-//             }
-//             Self::Disjonction(lhs, rhs) => {
-//                 display_binary_op(f, lhs, rhs, sym::DISJONCTION, Precedence::DISJONCTION)
-//             }
-//             Self::Implication(lhs, rhs) => {
-//                 if rhs.as_ref() == &Self::False {
-//                     "~".fmt(f)?;
-//                     if lhs.precedence() > Precedence::ATOMIC {
-//                         po.fmt(f)?;
-//                         lhs.fmt(f)?;
-//                         pc.fmt(f)
-//                     } else {
-//                         lhs.fmt(f)
-//                     }
-//                 } else {
-//                     display_binary_op(f, lhs, rhs, sym::IMPLICATION, Precedence::IMPLICATION)
-//                 }
-//             }
-//         }
-//     }
-// }
 
 mod parser {
-    use super::{Precedence, Prop};
-    use std::iter::Peekable;
-    use std::str::FromStr;
+    use super::Prop;
 
-    impl FromStr for Prop {
+    impl std::str::FromStr for Prop {
         type Err = &'static str;
         fn from_str(s: &str) -> Result<Self, Self::Err> {
-            let mut lexer = Lexer::new(s);
-            let iter = ParenLexer(&mut lexer);
-            let v: Vec<_> = iter.collect::<Result<_, _>>().unwrap();
+            let v: Vec<_> = Lexer::new(&mut s.chars()).collect::<Result<_, _>>()?;
             syntax_parse(&v)
-        }
-    }
-    impl std::convert::TryFrom<String> for Prop {
-        type Error = &'static str;
-        fn try_from(s: String) -> Result<Self, Self::Error> {
-            s.parse()
-        }
-    }
-    impl std::convert::From<Prop> for String {
-        fn from(p: Prop) -> Self {
-            p.to_string()
         }
     }
 
     #[derive(Debug)]
     enum LexItem {
-        ParenOpen,    // (
-        ParenClose,   // )
-        False,        // !
-        Name(String), // [A-Za-z][A-Za-z0-9_]*
-        Conjonction,  // /\
-        Disjonction,  // \/
-        Implication,  // ->
-        Negation,     // ~
+        Parenthesized(Vec<Self>), // ( .* )
+        False,                    // !
+        Name(String),             // [A-Za-z][A-Za-z0-9_]*
+        Conjonction,              // /\
+        Disjonction,              // \/
+        Implication,              // ->
+        Equivalence,              // <->
+        Negation,                 // ~
+    }
+
+    struct Parenthesized<'a> {
+        input: &'a mut dyn Iterator<Item = char>,
+        level: usize,
+    }
+    impl<'a> Parenthesized<'a> {
+        fn new(input: &'a mut impl Iterator<Item = char>) -> Self {
+            Self { input, level: 0 }
+        }
+    }
+    impl<'a> Iterator for Parenthesized<'a> {
+        type Item = Result<char, ()>;
+        fn next(&mut self) -> Option<Self::Item> {
+            if let Some(c) = self.input.next() {
+                match c {
+                    '(' => {
+                        self.level += 1;
+                        Some(Ok(c))
+                    }
+                    ')' if self.level == 0 => None,
+                    ')' => {
+                        self.level -= 1;
+                        Some(Ok(c))
+                    }
+                    c => Some(Ok(c)),
+                }
+            } else {
+                Some(Err(()))
+            }
+        }
     }
     struct Lexer<'a> {
-        input: Peekable<std::str::Chars<'a>>,
+        input: std::iter::Peekable<&'a mut dyn Iterator<Item = char>>,
     }
     impl<'a> Lexer<'a> {
+        fn new(input: &'a mut impl Iterator<Item = char>) -> Self {
+            Self {
+                input: (input as &mut dyn Iterator<Item = char>).peekable(),
+            }
+        }
         fn must_follow(&mut self, c: char) -> Result<(), &'static str> {
             if self.input.next().ok_or("unexpected end of stream")? == c {
                 Ok(())
@@ -283,23 +258,31 @@ mod parser {
                 Err("unexpected character")
             }
         }
-        fn new(s: &'a str) -> Self {
-            Self {
-                input: s.chars().peekable(),
-            }
-        }
     }
     impl<'a> Iterator for Lexer<'a> {
         type Item = Result<LexItem, &'static str>;
         fn next(&mut self) -> Option<Self::Item> {
             Some(match self.input.next()? {
-                '(' => Ok(LexItem::ParenOpen),
-                ')' => Ok(LexItem::ParenClose),
+                '(' => {
+                    let r: Result<Vec<char>, ()> = Parenthesized::new(&mut self.input).collect();
+                    match r {
+                        Err(()) => return Some(Err("closing parenthesis expected")),
+                        Ok(mut v) => {
+                            let r: Result<Vec<_>, _> = Lexer::new(&mut v.drain(..)).collect();
+                            match r {
+                                Err(e) => Err(e),
+                                Ok(v) => Ok(LexItem::Parenthesized(v)),
+                            }
+                        }
+                    }
+                }
+                ')' => Err("unexpected closing parenthesis"),
                 '!' => Ok(LexItem::False),
                 '~' => Ok(LexItem::Negation),
                 '/' => self.must_follow('\\').map(|()| LexItem::Conjonction),
                 '\\' => self.must_follow('/').map(|()| LexItem::Disjonction),
                 '-' => self.must_follow('>').map(|()| LexItem::Implication),
+                '<' => self.must_follow('-').and(self.must_follow('>')).map(|()| LexItem::Equivalence),
                 c @ 'A'..='Z' | c @ 'a'..='z' => {
                     let mut name = String::new();
                     name.push(c);
@@ -318,84 +301,20 @@ mod parser {
             })
         }
     }
-
-    #[derive(Debug)]
-    enum ParenLexItem {
-        Paren(Vec<Self>),
-        False,
-        Name(String),
-        Conjonction,
-        Disjonction,
-        Implication,
-        Negation,
-    }
-    struct ParenLexer<'a>(&'a mut dyn Iterator<Item = Result<LexItem, &'static str>>);
-    impl<'a> Iterator for ParenLexer<'a> {
-        type Item = Result<ParenLexItem, &'static str>;
-        fn next(&mut self) -> Option<Self::Item> {
-            let Self(input) = self;
-            Some(match input.next()? {
-                Ok(v) => Ok(match v {
-                    LexItem::ParenOpen => {
-                        let mut lvl = 0;
-                        let mut closing = false;
-                        match ParenLexer(&mut input.take_while(|v| match v {
-                            Ok(LexItem::ParenOpen) => {
-                                lvl += 1;
-                                true
-                            }
-                            Ok(LexItem::ParenClose) => {
-                                if lvl == 0 {
-                                    closing = true;
-                                    false
-                                } else {
-                                    lvl -= 1;
-                                    true
-                                }
-                            }
-                            _ => true,
-                        }))
-                        .collect::<Result<_, _>>()
-                        {
-                            Ok(v) => {
-                                if closing {
-                                    ParenLexItem::Paren(v)
-                                } else {
-                                    return Some(Err("closing parenthesis expected"));
-                                }
-                            }
-                            Err(e) => return Some(Err(e)),
-                        }
-                    }
-                    LexItem::ParenClose => return Some(Err("unexpected closing parenthesis")),
-                    LexItem::False => ParenLexItem::False,
-                    LexItem::Name(name) => ParenLexItem::Name(name),
-                    LexItem::Conjonction => ParenLexItem::Conjonction,
-                    LexItem::Disjonction => ParenLexItem::Disjonction,
-                    LexItem::Implication => ParenLexItem::Implication,
-                    LexItem::Negation => ParenLexItem::Negation,
-                }),
-                Err(e) => Err(e),
-            })
-        }
-    }
-
-    fn syntax_parse(items: &[ParenLexItem]) -> Result<Prop, &'static str> {
-        fn split_at_weak(
-            items: &[ParenLexItem],
-        ) -> Option<(&[ParenLexItem], &ParenLexItem, &[ParenLexItem])> {
+    fn syntax_parse(items: &[LexItem]) -> Result<Prop, &'static str> {
+        fn split_at_weak(items: &[LexItem]) -> Option<(&[LexItem], &LexItem, &[LexItem])> {
+            use super::Precedence;
             let mut max_preced = None;
             let mut index = None;
             for (i, p) in items
                 .iter()
                 .map(|e| match e {
-                    ParenLexItem::False => None,
-                    ParenLexItem::Name(_) => None,
-                    ParenLexItem::Paren(_) => None,
-                    ParenLexItem::Conjonction => Some(Precedence::CONJONCTION),
-                    ParenLexItem::Disjonction => Some(Precedence::DISJONCTION),
-                    ParenLexItem::Implication => Some(Precedence::IMPLICATION),
-                    ParenLexItem::Negation => Some(Precedence::ATOMIC),
+                    LexItem::Conjonction => Some(Precedence::CONJONCTION),
+                    LexItem::Disjonction => Some(Precedence::DISJONCTION),
+                    LexItem::Implication => Some(Precedence::IMPLICATION),
+                    LexItem::Equivalence => Some(Precedence::EQUIVALENCE),
+                    LexItem::Negation => Some(Precedence::NEGATION),
+                    _ => None,
                 })
                 .enumerate()
             {
@@ -410,16 +329,14 @@ mod parser {
         }
         match items {
             [] => Err("empty expression"),
-            [ParenLexItem::False] => Ok(Prop::False),
-            [ParenLexItem::Name(name)] => Ok(Prop::Variable(name.clone())),
-            [ParenLexItem::Paren(v)] => syntax_parse(v),
-            // [_] => Err("not an atomic expression"),
+            [LexItem::False] => Ok(Prop::False),
+            [LexItem::Name(name)] => Ok(Prop::Variable(name.clone())),
+            [LexItem::Parenthesized(v)] => syntax_parse(v),
             items => {
                 if let Some((left, op, right)) = split_at_weak(items) {
-                    if let ParenLexItem::Negation = op {
+                    if let LexItem::Negation = op {
                         if let [] = left {
-                            let right = Box::new(syntax_parse(right)?);
-                            Ok(Prop::Implication(right, Prop::False.into()))
+                            Ok(syntax_parse(right)?.negate())
                         } else {
                             Err("negation is not a binary operator")
                         }
@@ -429,13 +346,11 @@ mod parser {
                             Box::new(syntax_parse(right)?),
                         );
                         Ok(match op {
-                            ParenLexItem::Conjonction => Prop::Conjonction(left, right),
-                            ParenLexItem::Disjonction => Prop::Disjonction(left, right),
-                            ParenLexItem::Implication => Prop::Implication(left, right),
-                            ParenLexItem::Negation => unreachable!(),
-                            ParenLexItem::False => unreachable!(),
-                            ParenLexItem::Name(_) => unreachable!(),
-                            ParenLexItem::Paren(_) => unreachable!(),
+                            LexItem::Conjonction => Prop::Conjonction(left, right),
+                            LexItem::Disjonction => Prop::Disjonction(left, right),
+                            LexItem::Implication => Prop::Implication(left, right),
+                            LexItem::Equivalence => Prop::Equivalence(left, right),
+                            _ => unreachable!(),
                         })
                     }
                 } else {

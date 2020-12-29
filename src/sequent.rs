@@ -1,49 +1,26 @@
-use super::command::Command;
-use super::proof::Proof;
 use super::property::Prop;
-use super::symbols as sym;
+use super::symbols;
+use std::fmt;
 
-/// Represents any sequent, eg: `A->B, A |- B`
-#[derive(Debug, Clone)]
-#[cfg_attr(
-    feature = "use_serde",
-    derive(serde::Deserialize, serde::Serialize),
-    serde(try_from = "String"),
-    serde(into = "String")
-)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sequent {
     hypotheses: Vec<Prop>,
     conclusion: Prop,
-    proof: Option<Box<Proof>>,
 }
-
 impl Sequent {
     pub fn new(hypotheses: Vec<Prop>, conclusion: Prop) -> Self {
         Self {
             hypotheses,
             conclusion,
-            proof: None,
         }
     }
-    pub fn prove_by(&mut self, cmd: Command) -> bool {
-        if let Some(proof) = match cmd {
-            Command::Hypothesis => Proof::hypothesis(self),
-            Command::IntroImplication => Proof::impl_intro(self),
-            Command::IntrosImplication => Some(Proof::impl_intros(self)),
-            Command::ElimDisjonction(a, b) => Some(Proof::disj_elim(self, &a, &b)),
-            Command::Exfalso => Some(Proof::exfalso(self)),
-            Command::ModusPonens(b) => Some(Proof::modus_ponens(self, &b)),
-            Command::ElimConjonction(a, b) => Some(Proof::conj_e(self, &a, &b)),
-            Command::IntroConjonction => Proof::conj_i(self),
-            Command::IntroDisjonctionL => Proof::disj_i_l(self),
-            Command::IntroDisjonctionR => Proof::disj_i_r(self),
-            Command::Weakened(e) => Proof::weakened(self, &e),
-            Command::Apply(i) => Proof::apply(self, i),
-        } {
-            self.proof = Some(proof.into());
-            true
-        } else {
-            false
+    pub fn repr(&self) -> SequentRepr {
+        self.repr_conf(Default::default())
+    }
+    pub fn repr_conf(&self, conf: symbols::ReprConf) -> SequentRepr {
+        SequentRepr {
+            sequent: self,
+            conf,
         }
     }
     pub fn hypotheses(&self) -> &[Prop] {
@@ -52,93 +29,67 @@ impl Sequent {
     pub fn conclusion(&self) -> &Prop {
         &self.conclusion
     }
-    pub fn proof(&self) -> Option<&Proof> {
-        self.proof.as_ref().map(|p| p.as_ref())
+}
+
+#[derive(Clone)]
+pub struct SequentRepr<'a> {
+    sequent: &'a Sequent,
+    conf: symbols::ReprConf,
+}
+impl<'a> SequentRepr<'a> {
+    pub fn formated(mut self) -> Self {
+        self.conf.formated = true;
+        self
     }
-    pub fn next_not_proven(&mut self) -> Option<&mut Self> {
-        if self.proof.is_some() {
-            let array = self.proof.as_mut().unwrap().nodes_mut();
-            for o in array {
-                if let Some(next_not_proven) = o.next_not_proven() {
-                    return Some(next_not_proven);
-                }
-            }
-            None
-        } else {
-            Some(self)
-        }
+    pub fn unicode(mut self) -> Self {
+        self.conf.unicode = true;
+        self
     }
-    pub fn print_proof(&self, alternate: bool) {
-        let lock = std::io::stdout();
-        let mut output = lock.lock();
-        render::render_sequent_proof(self, &mut output, alternate).unwrap();
+    pub fn negation(mut self) -> Self {
+        self.conf.negation = true;
+        self
     }
-    pub fn repr_len(&self) -> usize {
-        let mut r = sym::repr::SEQUENT.chars().count() + 1 +
-        self.conclusion().repr_len();
-        let mut first = true;
-        for h in self.hypotheses() {
-            if !first {
-                r += 2;
-            }
-            first = false;
-            r += h.repr_len();
-        }
-        if !self.hypotheses().is_empty() {
-            r += 1;
-        }
-        r
+    pub fn len(&self) -> usize {
+        let mut repr = self.clone();
+        repr.conf.formated = false;
+        repr.to_string().len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
-use std::fmt;
-impl fmt::Display for Sequent {
+impl<'a> fmt::Display for SequentRepr<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if f.alternate() {
-            let mut first = true;
-            for h in &self.hypotheses {
-                if !first {
-                    ", ".fmt(f)?;
-                }
-                first = false;
-                h.fmt(f)?;
-            }
+        let mut first = true;
+        for h in &self.sequent.hypotheses {
             if !first {
+                symbols::Sym::Comma.fmt(self.conf, f)?;
                 " ".fmt(f)?;
             }
-            "\x1b[1m".fmt(f)?;
-            sym::repr::SEQUENT.fmt(f)?;
-            "\x1b[0m ".fmt(f)?;
-            self.conclusion.fmt(f)
-        } else {
-            let mut first = true;
-            for h in &self.hypotheses {
-                if !first {
-                    sym::lex::COMMA.fmt(f)?;
-                }
-                first = false;
-                h.fmt(f)?;
-            }
-            if !first {
-                " ".fmt(f)?;
-            }
-            sym::lex::SEQUENT.fmt(f)?;
-            " ".fmt(f)?;
-            self.conclusion.fmt(f)
+            first = false;
+            h.repr_conf(self.conf).fmt(f)?;
         }
+        if !self.sequent.hypotheses.is_empty() {
+            " ".fmt(f)?;
+        }
+        symbols::Sym::Sequent.fmt(self.conf, f)?;
+        " ".fmt(f)?;
+        let mut emph_conf = self.conf;
+        emph_conf.emphazis = true;
+        self.sequent.conclusion.repr_conf(emph_conf).fmt(f)
     }
 }
 
-use std::str::FromStr;
-impl FromStr for Sequent {
+impl std::str::FromStr for Sequent {
     type Err = &'static str;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut iter = s.split("|-");
+        let mut iter = s.split(symbols::Sym::Sequent.lex());
         match [iter.next(), iter.next(), iter.next()] {
             [Some(left), Some(right), None] => {
                 let hypotheses: Vec<_> = if left.trim().is_empty() {
                     Vec::new()
                 } else {
-                    left.split(',')
+                    left.split(symbols::Sym::Comma.lex())
                         .map(|h| h.parse())
                         .collect::<Result<_, _>>()?
                 };
@@ -146,217 +97,6 @@ impl FromStr for Sequent {
             }
             [Some(prop), None, None] => Ok(Self::new(Vec::new(), prop.parse()?)),
             _ => Err("expecting only one sequent symbol"),
-        }
-    }
-}
-impl std::convert::TryFrom<String> for Sequent {
-    type Error = &'static str;
-    fn try_from(s: String) -> Result<Self, Self::Error> {
-        s.parse()
-    }
-}
-impl std::convert::From<Sequent> for String {
-    fn from(s: Sequent) -> Self {
-        s.to_string()
-    }
-}
-
-mod render {
-    use super::Sequent;
-    use std::{io, io::Write};
-
-    pub fn render_sequent_proof(
-        sequent: &Sequent,
-        output: &mut impl Write,
-        alternate: bool,
-    ) -> io::Result<()> {
-        let sg = SequentGeom::from(sequent, alternate);
-        for y in (0..sg.height).rev() {
-            sg.print_line(output, y, alternate)?;
-            writeln!(output)?;
-        }
-        Ok(())
-    }
-
-    struct SequentGeom {
-        bottom_repr: String,
-        proof: Option<Box<ProofRepr>>,
-        width: usize,
-        height: usize,
-        bottom_x: usize,
-        bottom_width: usize,
-        center: usize,
-    }
-    struct ProofRepr {
-        over: Vec<SequentGeom>,
-        name: String,
-    }
-    impl ProofRepr {
-        fn line_x(&self) -> Option<usize> {
-            self.over.split_first().map(|(f, _)| f.bottom_x)
-        }
-        fn line_width(&self) -> Option<usize> {
-            self.over.split_first().map(|(f, r)| {
-                r.split_last()
-                    .map(|(l, r)| {
-                        r.iter().map(|o| o.width + 4).sum::<usize>()
-                            + (f.width - f.bottom_x)
-                            + 4
-                            + (l.bottom_x + l.bottom_width)
-                    })
-                    .unwrap_or(f.bottom_width)
-            })
-        }
-        fn width(&self) -> Option<usize> {
-            self.over
-                .split_first()
-                .map(|(f, r)| f.width + r.iter().map(|o| o.width + 4).sum::<usize>())
-        }
-        fn height(&self) -> Option<usize> {
-            self.over.iter().map(|o| o.height).max()
-        }
-        fn split_center(&self) -> (usize, usize) {
-            let center = self.line_x().unwrap_or(0) + self.line_width().unwrap_or(0) / 2;
-            (center, self.width().unwrap_or(0) - center)
-        }
-        fn split_bottom(&self) -> (usize, usize) {
-            let line_width = self.line_width().unwrap_or(0);
-            let middle = line_width / 2;
-            (middle, line_width - middle)
-        }
-    }
-    impl SequentGeom {
-        fn from(sequent: &Sequent, alternate: bool) -> Self {
-            let proof_repr = sequent.proof.as_ref().map(|p| ProofRepr {
-                over: p
-                    .nodes()
-                    .iter()
-                    .map(|s| SequentGeom::from(s, alternate))
-                    .collect(),
-                name: p.label().to_owned(),
-            });
-
-            let bottom_repr = if alternate {
-                format!("{:#}", sequent)
-            } else {
-                sequent.to_string()
-            };
-            let bottom_width = sequent.repr_len();
-
-            if let Some(proof) = proof_repr {
-                if let (Some(ul_x), Some(ul_width), Some(_u_width), Some(u_height)) = (
-                    proof.line_x(),
-                    proof.line_width(),
-                    proof.width(),
-                    proof.height(),
-                ) {
-                    let (u_left, u_right) = proof.split_center();
-                    let b_left = bottom_width / 2;
-                    let b_right = bottom_width - b_left;
-                    let center = u_left.max(b_left);
-                    let rule_len = proof.name.chars().count();
-                    let rule_end =
-                        (center + b_right).max(center - u_left + ul_x + ul_width) + rule_len;
-                    let width = (center + u_right.max(b_right)).max(rule_end);
-                    let bottom_x = center - b_left;
-                    Self {
-                        width,
-                        height: u_height + 2,
-                        bottom_x,
-                        bottom_width,
-                        center,
-                        proof: Some(proof.into()),
-                        bottom_repr,
-                    }
-                } else {
-                    Self {
-                        width: bottom_width + proof.name.chars().count(),
-                        height: 2,
-                        bottom_x: 0,
-                        center: bottom_width / 2,
-                        bottom_width,
-                        proof: Some(proof.into()),
-                        bottom_repr,
-                    }
-                }
-            } else {
-                Self {
-                    width: bottom_width,
-                    center: bottom_width / 2,
-                    height: 1,
-                    bottom_x: 0,
-                    bottom_width,
-                    bottom_repr,
-                    proof: None,
-                }
-            }
-        }
-        fn print_line(&self, out: &mut impl Write, line: usize, alternate: bool) -> io::Result<()> {
-            match line {
-                0 => {
-                    for _ in 0..self.bottom_x {
-                        write!(out, " ")?;
-                    }
-                    write!(out, "{}", self.bottom_repr)?;
-                    for _ in (self.bottom_x + self.bottom_width)..self.width {
-                        write!(out, " ")?;
-                    }
-                    Ok(())
-                }
-                1 => {
-                    if let Some(proof) = self.proof.as_ref() {
-                        let proof = proof.as_ref();
-                        let (ub_left, ub_right) = proof.split_bottom();
-                        let b_left = self.bottom_width / 2;
-                        let b_right = self.bottom_width - b_left;
-                        let l_begin = self.center - b_left.max(ub_left);
-                        let l_end = self.center + b_right.max(ub_right);
-                        for _ in 0..l_begin {
-                            write!(out, " ")?;
-                        }
-                        for _ in l_begin..l_end {
-                            write!(out, "─")?;
-                        }
-                        write!(out, "{}", proof.name)?;
-                        for _ in (l_end + proof.name.chars().count())..self.width {
-                            write!(out, " ")?;
-                        }
-                        Ok(())
-                    } else {
-                        for _ in 0..self.width {
-                            write!(out, " ")?;
-                        }
-                        Ok(())
-                    }
-                }
-                _ => {
-                    if let Some(proof) = self.proof.as_ref() {
-                        let proof = proof.as_ref();
-                        let line = line - 2;
-                        let (u_left, u_right) = proof.split_center();
-                        for _ in 0..(self.center - u_left) {
-                            write!(out, " ")?;
-                        }
-                        let mut first = true;
-                        for o in &proof.over {
-                            if !first {
-                                write!(out, "    ")?;
-                            }
-                            first = false;
-                            o.print_line(out, line, alternate)?;
-                        }
-                        for _ in (self.center + u_right)..self.width {
-                            write!(out, " ")?;
-                        }
-                        Ok(())
-                    } else {
-                        for _ in 0..self.width {
-                            write!(out, " ")?;
-                        }
-                        Ok(())
-                    }
-                }
-            }
         }
     }
 }
