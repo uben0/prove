@@ -86,7 +86,7 @@ impl std::str::FromStr for ProveBy {
                 expect_end(args)?;
                 Ok(Self::Exfalso)
             }
-            _ => Err("unknown rule application"),
+            _ => Err("unknown rule application "),
         }
     }
 }

@@ -12,6 +12,8 @@ enum Command {
     Rule(ProveBy),
     Restart,
     Back,
+    Help,
+    Quit,
 }
 impl std::str::FromStr for Command {
     type Err = &'static str;
@@ -21,7 +23,9 @@ impl std::str::FromStr for Command {
                 match s {
                     ":b" => Ok(Command::Back),
                     ":r" => Ok(Command::Restart),
-                    _ => Err("unknown command"),
+                    ":h" => Ok(Command::Help),
+                    ":q" => Ok(Command::Quit),
+                    _ => Err("     unknown command     "),
                 }
             }
             Some(_) => Ok(Command::Rule(s.parse()?)),
@@ -30,27 +34,52 @@ impl std::str::FromStr for Command {
     }
 }
 
-fn user_input_loop<T>() -> T
-where
-    T: std::str::FromStr,
-    <T as std::str::FromStr>::Err: std::fmt::Debug,
-{
-    let mut buffer = String::new();
-    loop {
-        buffer.clear();
-        std::io::stdin().read_line(&mut buffer).unwrap();
-        match buffer.trim().parse() {
-            Ok(v) => return v,
-            Err(e) => eprintln!("invalid user input: {:?}", e),
-        }
-    }
+fn print_usage() {
+    clear_screen();
+    println!("COMMANDS:");
+    println!("  :b            back one step, undo the last action");
+    println!("  :r            reset all steps, undo all actions");
+    println!("  :h            print this help message");
+    println!("  :q            quit the program");
+    println!();
+    println!("APPLICABLE RULES:");
+    println!("  h             hypothesis");
+    println!("  i             introduction of the conclusion (automatic: it choses");
+    println!("                introduction rule base on conclusion type)");
+    println!("  xf            exflaso");
+    println!("  e <N>         elimination of the Nth hypothesis (automatic: it choses");
+    println!("                elimination rule base on hypothesis type)");
+    println!("  ii            implication introduction");
+    println!("  iis           implications introduction (for chaining implications)");
+    println!("  dil           disjonction introduction left");
+    println!("  dir           disjonction introduction left");
+    println!("  mp <F>        modus ponens on F (a logical property formula like: ~P/\\Q)");
+    println!("  de <F>, <F>   disjonction elimination of left formula and right formula");
+    println!("  ce <F>, <F>   conjonction elimination of left formula and right formula");
+    println!();
+    press_enter("           ok            ", "\x1b[94m");
 }
 
-fn press_enter() {
-    let _: String = user_input_loop();
+fn clear_screen() {
+    println!("\x1b[H\x1b[2J\x1b[3J");
+}
+
+fn try_user_input<T: std::str::FromStr>() -> Result<T, <T as std::str::FromStr>::Err> {
+    let mut buffer = String::new();
+    std::io::stdin().read_line(&mut buffer).unwrap();
+    buffer.trim().parse()
+}
+
+fn press_enter(message: &str, color: &str) {
+    println!("\x1b[7m{}{}\x1b[0m", color, message);
+    println!("\x1b[7;1m[      press enter      ]\x1b[0m");
+    let mut buffer = String::new();
+    std::io::stdin().read_line(&mut buffer).unwrap();
 }
 
 fn main() {
+    print_usage();
+
     let repr_conf = ReprConf{
         negation: true,
         formated: true,
@@ -64,10 +93,10 @@ fn main() {
         let mut p = Proof::not_proven(line.unwrap().trim().parse().unwrap());
         let mut hist = vec![p.clone()];
         while p.next_not_proven_mut().is_some() {
-            println!("\x1b[2J");
+            clear_screen();
             println!("{}", p.repr_conf(repr_conf));
-            match user_input_loop::<Command>() {
-                Command::Back => {
+            match try_user_input::<Command>() {
+                Ok(Command::Back) => {
                     hist.pop();
                     match hist.last() {
                         Some(v) => {
@@ -78,7 +107,7 @@ fn main() {
                         }
                     }
                 }
-                Command::Restart => {
+                Ok(Command::Restart) => {
                     hist.drain(1..).count();
                     match hist.last() {
                         Some(v) => {
@@ -89,19 +118,27 @@ fn main() {
                         }
                     }
                 }
-                Command::Rule(rule) => {
+                Ok(Command::Help) => {
+                    print_usage();
+                }
+                Ok(Command::Quit) => {
+                    return
+                }
+                Ok(Command::Rule(rule)) => {
                     if !p.prove_next_by(rule) {
-                        println!("can't apply rule");
-                        press_enter();
+                        press_enter("     can't apply rule    ", "\x1b[91m");
                     } else {
                         hist.push(p.clone());
                     }
                 }
+                Err(e) => {
+                    press_enter(&e, "\x1b[91m");
+                }
             }
         }
-        println!("\x1b[2J");
+        clear_screen();
         println!("{}", p.repr_conf(repr_conf));
-        println!("SOLVED");
-        press_enter();
+        println!();
+        press_enter("         SOLVED          ", "\x1b[94m");
     }
 }
