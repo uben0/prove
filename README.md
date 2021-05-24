@@ -1,6 +1,8 @@
 # Prove sequents
 
-Can be use as a Rust crate (library) or as a terminal application to prove sequents.
+Can be used as a Rust crate (library) or as a terminal application to prove sequents.
+
+Sequents to be proven are written in the `sequents.txt` file, one by line.
 
 ![](https://carlo.uben.ovh/attali/media/prove.mp4)
 
