@@ -13,6 +13,7 @@ enum Command {
     Restart,
     Back,
     Help,
+    Negation,
     Quit,
 }
 impl std::str::FromStr for Command {
@@ -24,25 +25,27 @@ impl std::str::FromStr for Command {
                     ":b" => Ok(Command::Back),
                     ":r" => Ok(Command::Restart),
                     ":h" => Ok(Command::Help),
+                    ":n" => Ok(Command::Negation),
                     ":q" => Ok(Command::Quit),
                     _ => Err("     unknown command     "),
                 }
             }
             Some(_) => Ok(Command::Rule(s.parse()?)),
-            None => Err("empty input"),
+            None => Err("       empty input       "),
         }
     }
 }
 
 fn print_usage() {
     clear_screen();
-    println!("COMMANDS:");
+    println!("\x1b[7mCOMMANDS                                                                        \x1b[0m");
     println!("  :b            back one step, undo the last action");
     println!("  :r            reset all steps, undo all actions");
     println!("  :h            print this help message");
+    println!("  :n            toggle on/off the negation representaion");
     println!("  :q            quit the program");
     println!();
-    println!("APPLICABLE RULES:");
+    println!("\x1b[7mAPPLICABLE RULES                                                                \x1b[0m");
     println!("  h             hypothesis");
     println!("  i             introduction of the conclusion (automatic: it choses");
     println!("                introduction rule base on conclusion type)");
@@ -80,7 +83,7 @@ fn press_enter(message: &str, color: &str) {
 fn main() {
     print_usage();
 
-    let repr_conf = ReprConf{
+    let mut repr_conf = ReprConf{
         negation: true,
         formated: true,
         unicode: false,
@@ -120,6 +123,9 @@ fn main() {
                 }
                 Ok(Command::Help) => {
                     print_usage();
+                }
+                Ok(Command::Negation) => {
+                    repr_conf.negation = !repr_conf.negation;
                 }
                 Ok(Command::Quit) => {
                     return
