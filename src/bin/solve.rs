@@ -12,6 +12,7 @@ enum Command {
     Rule(ProveBy),
     Restart,
     Back,
+    Skip,
     Help,
     Negation,
     Quit,
@@ -24,6 +25,7 @@ impl std::str::FromStr for Command {
                 match s {
                     ":b" => Ok(Command::Back),
                     ":r" => Ok(Command::Restart),
+                    ":s" => Ok(Command::Skip),
                     ":h" => Ok(Command::Help),
                     ":n" => Ok(Command::Negation),
                     ":q" => Ok(Command::Quit),
@@ -41,6 +43,7 @@ fn print_usage() {
     println!("\x1b[7mCOMMANDS                                                                        \x1b[0m");
     println!("  :b            back one step, undo the last action");
     println!("  :r            reset all steps, undo all actions");
+    println!("  :s            skip to the next sequent");
     println!("  :h            print this help message");
     println!("  :n            toggle on/off the negation representaion");
     println!("  :q            quit the program");
@@ -55,7 +58,7 @@ fn print_usage() {
     println!("  ii            implication introduction");
     println!("  iis           implications introduction (for chaining implications)");
     println!("  dil           disjonction introduction left");
-    println!("  dir           disjonction introduction left");
+    println!("  dir           disjonction introduction right");
     println!("  mp <F>        modus ponens on F (a logical property formula like: ~P/\\Q)");
     println!("  de <F>, <F>   disjonction elimination of left formula and right formula");
     println!("  ce <F>, <F>   conjonction elimination of left formula and right formula");
@@ -99,6 +102,9 @@ fn main() {
             clear_screen();
             println!("{}", p.repr_conf(repr_conf));
             match try_user_input::<Command>() {
+                Ok(Command::Skip) => {
+                    break
+                }
                 Ok(Command::Back) => {
                     hist.pop();
                     match hist.last() {
