@@ -1,10 +1,20 @@
-# Prove sequents
+# Formal proof system
 
-Can be used as a Rust crate (library) or as a terminal application to prove sequents.
+This is a REPL (Read Eval Print Loop) to prove a formula.
 
-Sequents to be proven are written in the `sequents.txt` file, one by line.
+It reads the formulas from the `sequents.txt` file, one by line. It uses its own specific language to write formulas. For instance:
 
-![](https://carlo.uben.ovh/attali/media/prove.mp4)
+```
+P \/ Q -> ~P -> Q
+```
+
+Which means:
+
+```
+(imply (and "P" "Q") (imply (not "P") "Q"))
+```
+
+In the REPL, the following commands are accepted.
 
 ```
 COMMANDS:
@@ -23,11 +33,13 @@ APPLICABLE RULES:
   ii            implication introduction
   iis           implications introduction (for chaining implications)
   dil           disjonction introduction left
-  dir           disjonction introduction left
+  dir           disjonction introduction right
   mp <F>        modus ponens on F (a logical property formula like: ~P/\Q)
   de <F>, <F>   disjonction elimination of left formula and right formula
   ce <F>, <F>   conjonction elimination of left formula and right formula
 ```
+
+The REPL will print the proof tree in a pretty formatted form:
 
 ```
                                                 ──────────────h
